@@ -1,0 +1,6 @@
+module Pods_expocbltravel {
+  umbrella header "Pods-expocbltravel-umbrella.h"
+
+  export *
+  module * { export * }
+}

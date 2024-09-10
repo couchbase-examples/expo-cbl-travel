@@ -1,0 +1,6 @@
+module cbl_reactnative {
+  umbrella header "cbl-reactnative-umbrella.h"
+
+  export *
+  module * { export * }
+}
