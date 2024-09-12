@@ -1,1 +1,0 @@
-../../../../../node_modules/cbl-reactnative/ios/CblReactnative-Bridging-Header.h
