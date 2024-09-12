@@ -1,0 +1,1 @@
+{"version":3,"names":["URLEndpoint","constructor","url","toJson"],"sourceRoot":"../../../../../src","sources":["cblite-js/cblite/src/url-endpoint.ts"],"mappings":"AAEA,OAAO,MAAMA,WAAW,CAAqB;EAC3CC,WAAWA,CAASC,GAAW,EAAE;IAAA,KAAbA,GAAW,GAAXA,GAAW;EAAG;EAElCC,MAAMA,CAAA,EAAG;IACP,OAAO;MACLD,GAAG,EAAE,IAAI,CAACA;IACZ,CAAC;EACH;AACF","ignoreList":[]}

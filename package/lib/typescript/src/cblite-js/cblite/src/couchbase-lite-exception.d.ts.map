@@ -1,0 +1,1 @@
+{"version":3,"file":"couchbase-lite-exception.d.ts","sourceRoot":"","sources":["../../../../../../src/cblite-js/cblite/src/couchbase-lite-exception.ts"],"names":[],"mappings":"AAAA,qBAAa,sBAAuB,SAAQ,KAAK;IAE7B,OAAO,EAAE,MAAM;IACxB,MAAM,EAAE,MAAM;IACd,IAAI,EAAE,MAAM;gBAFH,OAAO,EAAE,MAAM,EACxB,MAAM,EAAE,MAAM,EACd,IAAI,EAAE,MAAM;CAItB"}

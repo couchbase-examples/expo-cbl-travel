@@ -13,21 +13,19 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.couchbase.expo.ts"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      },
+      "package": "com.couchbase.expo.ts"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "./plugin.config.js"
     ],
     "experiments": {
       "typedRoutes": true

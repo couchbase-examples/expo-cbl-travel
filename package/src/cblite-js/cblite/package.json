@@ -1,0 +1,19 @@
+{
+  "name": "cblite",
+  "version": "0.2.3",
+  "description": "The core Typescript API definition module for CBLite for mobile platforms",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "typescript": "^5.4.2"
+  },
+  "keywords": [
+    "couchbase",
+    "couchbase-lite"
+  ],
+  "author": "Developer Experience/Ecosystem Team @ Couchbase",
+  "license": "Apache-2.0"
+}

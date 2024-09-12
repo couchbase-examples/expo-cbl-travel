@@ -1,0 +1,1 @@
+{"version":3,"file":"variable-expression.d.ts","sourceRoot":"","sources":["../../../../../../src/cblite-js/cblite/src/variable-expression.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,UAAU,EAAE,MAAM,cAAc,CAAC;AAE1C,qBAAa,kBAAmB,SAAQ,UAAU;IACpC,OAAO,CAAC,IAAI;gBAAJ,IAAI,EAAE,MAAM;IAIhC,OAAO;IAIA,MAAM,IAAI,GAAG,EAAE;CAGvB"}

@@ -1,70 +1,200 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+import {
+    useContext,
+    useRef,
+    useState
+}  from "react";
+import {
+    ActivityIndicator,
+    Animated,
+    FlatList,
+    SafeAreaView,
+    StyleSheet
+}  from 'react-native';
+import {
+    Button,
+    ButtonGroup
+} from "@rneui/base";
+import {ThemedText} from '@/components/ThemedText';
+import {ThemedSearchBar} from "@/components/searchBar/ThemedSearchBar";
+import DatabaseContext from "@/providers/DatabaseContext";
+import {useNavigation} from "@react-navigation/native";
+import {getLandmarkBySearchTerm} from "@/hooks/getLandmarks";
+import {ThemedView} from "@/components/ThemedView";
+import useNavigationBarTitleResetOption from "@/hooks/useNavigationBarTitleResetOption";
+import {NoLandmark} from "@/components/noLandmark/NoLandmark";
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+export default function LandmarkScreen() {
+    const {databaseService} = useContext(DatabaseContext)!;
+    const [searchName, setSearchName] = useState('');
+    const [searchLocation, setSearchLocation] = useState('');
+    const [selectedIndex, setSelectedIndex] = useState(0);
+    const [filteredLandmarks, setFilteredLandmarks] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+    const activities = ['buy','do','drink','eat','see'];
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const navigation = useNavigation();
 
-export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({ ios: 'cmd + d', android: 'cmd + m' })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
-  );
+    useNavigationBarTitleResetOption(
+        'Landmarks',
+        navigation,
+        reset);
+
+    const fadeIn = () => {
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    async function search() {
+        setIsLoading(true);
+        try {
+            setErrorMessage('');
+            const landmarks = await getLandmarkBySearchTerm(databaseService, searchName, searchLocation, activities[selectedIndex]);
+            if (landmarks !== undefined && landmarks.length > 0) {
+                setFilteredLandmarks(landmarks);
+            } else {
+                setFilteredLandmarks([]);
+            }
+        } catch (e){
+            const errorMsg = e instanceof Error ? e.message : 'An unexpected error occurred';
+            setErrorMessage(errorMsg);
+        }
+        finally {
+            setIsLoading(false);
+        }
+    }
+
+    async function reset() {
+        setIsLoading(true);
+        setFilteredLandmarks([]);
+        setIsLoading(false);
+        fadeIn();
+    }
+
+    // @ts-ignore
+    const renderLandmarkCard = ({item}) => (
+        <ThemedView style={styles.card}>
+            <ThemedText style={styles.cardTitle}>{item.landmark.name}</ThemedText>
+            <ThemedText style={styles.cardSubtitle}>{item.landmark.title}</ThemedText>
+            <ThemedText style={styles.description}>{item.landmark.content}</ThemedText>
+            <ThemedText style={styles.address}>{item.landmark.address}</ThemedText>
+            <ThemedText style={styles.address}>{item.landmark.city}</ThemedText>
+            {item.landmark.state && <ThemedText style={styles.address}>{item.landmark.state}</ThemedText>}
+            <ThemedText style={styles.address}>{item.landmark.country}</ThemedText>
+        </ThemedView>
+    );
+
+    return (
+        <SafeAreaView style={styles.container}>
+            <ThemedSearchBar
+                placeholder="Search Location Name"
+                onChangeText={(text) =>
+                    setSearchName(text)}
+                value={searchName}>
+            </ThemedSearchBar>
+            <ThemedSearchBar
+                placeholder="Search Address"
+                onChangeText={(text) =>
+                    setSearchLocation(text)}
+                value={searchLocation}>
+            </ThemedSearchBar>
+            <ButtonGroup
+                buttons={[...activities]}
+                selectedIndex={selectedIndex}
+                onPress={(value) => {
+                    setSelectedIndex(value);
+                }}
+                containerStyle={{marginBottom: 20}}
+            />
+            <Button
+                onPress={search}
+                title={'Search'}
+                containerStyle={{
+                    marginHorizontal: 50,
+                    marginBottom: 10,
+                }}
+            />
+            {isLoading ? (
+                <ThemedView style={styles.spinnerContainer}>
+                    <ActivityIndicator size="large" color="#0000ff"/>
+                </ThemedView>
+            ) : (errorMessage.length > 0 ? (
+                            <ThemedText>{errorMessage}</ThemedText>
+                        ) : filteredLandmarks === undefined || filteredLandmarks.length === 0 ? (
+                        <NoLandmark />
+                    ) : (
+                        <FlatList
+                            data={filteredLandmarks}
+                            renderItem={renderLandmarkCard}
+                            keyExtractor={(item) => item.landmark.id.toString()}
+                        />
+                    )
+            )}
+        </SafeAreaView>
+    );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+    container: {
+        flex: 1,
+    },
+    spinnerContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    description: {
+        fontSize: 16,
+        marginBottom: 8,
+    },
+    errorText: {
+        color: 'red',
+        fontSize: 16,
+        textAlign: 'center',
+        marginVertical: 10,
+    },
+    address: {
+        fontSize: 14,
+        color: 'gray',
+    },
+    addressPadding: {
+        paddingTop: 16,
+    },
+    component: {
+        paddingLeft: 8,
+        paddingRight: 12,
+    },
+    itemContainer: {
+        flexDirection: 'row', // Align items in a row
+        justifyContent: 'space-between', // Space between items
+        alignItems: 'center', // Center items vertically
+        padding: 10,
+        borderBottomWidth: 1,
+    },
+    titleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    card: {
+        padding: 16,
+        marginVertical: 8,
+        borderRadius: 8,
+        shadowColor: '#000',
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 5,
+    },
+    cardTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    cardSubtitle: {
+        fontSize: 16,
+        fontWeight: 'semibold',
+        marginBottom: 16,
+    },
 });

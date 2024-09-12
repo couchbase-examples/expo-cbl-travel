@@ -1,0 +1,45 @@
+import { Database, Collection, Scope, MutableDocument, Dictionary, ICoreEngine } from '../../cblite';
+import { ITestResult } from './test-result.types';
+export declare class TestCase {
+    database: Database | undefined;
+    otherDatabase: Database | undefined;
+    databaseName: string;
+    otherDatabaseName: string;
+    scopeName: string;
+    collectionName: string;
+    collection: Collection | undefined;
+    defaultCollection: Collection | undefined;
+    scope: Scope | undefined;
+    directory: string | undefined;
+    dataSource: string;
+    private TEST_DOC_TAG_KEY;
+    private TEST_DOC_SORT_KEY;
+    private TEST_DOC_REV_SORT_KEY;
+    init(): Promise<ITestResult>;
+    tearDown(): Promise<void>;
+    deleteDatabase(db: Database): Promise<ITestResult>;
+    getPlatformPath(): Promise<ITestResult>;
+    getDatabase(name: string, path: string | undefined, encryptionKey: string | undefined): Promise<Database | string>;
+    createDocument(id: string): MutableDocument;
+    createDocumentWithId(withId: string): Promise<MutableDocument>;
+    createCollectionDocumentWithId(withId: string, withCollection: Collection): Promise<MutableDocument>;
+    createDocumentWithIdAndData(id: string, data: Dictionary): MutableDocument;
+    createDocumentNumbered(start: number, end: number): MutableDocument[];
+    createDocs(methodName: string, number: number): Promise<MutableDocument[]>;
+    createCollectionDocs(methodName: string, withCollection: Collection, number: number): Promise<MutableDocument[]>;
+    createTestDoc(id: number, top: number, tag: string): MutableDocument;
+    jsonFromDate(date: Date): string;
+    loadDocuments(numberOfDocs: number): Promise<void>;
+    loadDocumentsIntoCollection(numberOfDocs: number, collection: Collection): Promise<void>;
+    loadDocumentsStartStopByCollection(start: number, stop: number, collection: Collection): Promise<void>;
+    loadNamesData(collection: Collection): Promise<void>;
+    verifyDocs(testName: string, number: number): Promise<ITestResult>;
+    verifyCollectionDocs(testName: string, withCollection: Collection, number: number): Promise<ITestResult>;
+    verifyDoc(testName: string, withId: string, withData: string): Promise<ITestResult>;
+    verifyCollectionDoc(testName: string, withId: string, withCollection: Collection, withData: string): Promise<ITestResult>;
+    getCollectionDocumentCount(): Promise<number>;
+    getDocumentCount(): Promise<number>;
+    sleep(ms: number): Promise<unknown>;
+    getEngine(): ICoreEngine;
+}
+//# sourceMappingURL=test-case.d.ts.map
