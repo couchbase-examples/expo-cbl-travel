@@ -1,8 +1,14 @@
-# Welcome to your Expo app 👋
+# Couchbase Lite React Native Expo - Sample App 👋
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+# Overview
 
-## Get started
+This is an example app of a simple React Native app that uses the [Couchbase Lite](https://www.couchbase.com/products/lite) database. The app lists a set of Landmarks and Hotels that are provided as part of the [Couchbase Trave-Sample](https://docs.couchbase.com/cloud/get-started/run-first-queries.html) dataset. 
+
+This app assumes you have a Capella free-teir operational cluster with the travel-sample dataset installed.
+
+## App Services Setup
+
+## Setup the Mobile App 
 
 1. Install dependencies
 
@@ -21,30 +27,20 @@ In the output, you'll find options to open the app in a
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
 - [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
 
 ## Learn more
 
-To learn more about developing your project with Expo, look at the following resources:
+To learn more about Couchbase Lite and React Native, look at the following resources:
+- [cbl-reactnative documentation](https://cbl-reactnative.dev/)
 
+To learn more about Expo, look at the following resources:
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
 ## Join the community
 
-Join our community of developers creating universal apps.
+Join our community of developers 
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [Discord community](https://bit.ly/3NbK5vg): Chat with Couchbase developers and ask questions.
+- [Stack Overflow community](https://stackoverflow.com/tags/couchbase/info/): Ask questions.
+- [Developer Portal](https://www.couchbase.com/developer): more information including tutorials and learning paths. 
