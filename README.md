@@ -1,4 +1,4 @@
-# Couchbase Lite React Native Expo - Sample App 👋
+# Couchbase Lite React Native - Expo Travel Sample App 👋
 
 # Overview
 
