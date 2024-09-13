@@ -2,13 +2,14 @@
 
 # Overview
 
-This is an example app of a simple React Native app that uses the [Couchbase Lite](https://www.couchbase.com/products/lite) database. The app lists a set of Landmarks and Hotels that are provided as part of the [Couchbase Trave-Sample](https://docs.couchbase.com/cloud/get-started/run-first-queries.html) dataset. 
+This is an example app of a simple React Native app that uses the [Couchbase Lite](https://www.couchbase.com/products/lite) database. The app lists a set of Landmarks and Hotels that are provided as part of the [Couchbase Travel-Sample](https://docs.couchbase.com/cloud/get-started/run-first-queries.html) dataset. 
 
-This app assumes you have a Capella free-teir operational cluster with the travel-sample dataset installed.
+This app assumes you have a Capella Free Tier operational cluster with the travel-sample dataset installed.  To find out more information about the free tier, please visit this blog post [Couchbase Cloud](https://www.couchbase.com/blog/free-tier-capella-dev-available/).
 
 ## App Services Setup
+To-Do
 
-## Setup the Mobile App 
+## Set up the Mobile App 
 
 1. Install dependencies
 
@@ -22,8 +23,9 @@ This app assumes you have a Capella free-teir operational cluster with the trave
     npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+In the output, you'll find options to open the app in a iOS simulator, or Android emulator.
 
+More Information on developing mobile apps on Expo can be found in the links below:
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
 - [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
