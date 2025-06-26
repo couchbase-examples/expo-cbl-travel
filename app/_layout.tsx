@@ -6,6 +6,7 @@ import React, {useEffect} from 'react';
 import 'react-native-reanimated';
 import DatabaseProvider from '@/providers/DatabaseProvider';
 import {useColorScheme} from '@/hooks/useColorScheme';
+import { ProgressBar } from "@/components/progressBar/progressBar";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().then();
@@ -32,6 +33,7 @@ export default function RootLayout() {
                 <Stack>
                     <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
                 </Stack>
+                <ProgressBar />
             </ThemeProvider>
         </DatabaseProvider>
     );

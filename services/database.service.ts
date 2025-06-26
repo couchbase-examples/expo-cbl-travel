@@ -20,7 +20,7 @@ import {
  */
 export class DatabaseService {
     private database: Database | undefined;
-    private replicator: Replicator | undefined;
+    public replicator: Replicator | undefined;
     private engine: CblReactNativeEngine | undefined;
 
     constructor() {
@@ -137,7 +137,7 @@ export class DatabaseService {
             if (this.replicator === undefined) {
                 await this.setupReplicator();
             }
-            await this.replicator?.start(true);
+
         } catch (error) {
             console.log(`Error: ${error}`);
             throw error;

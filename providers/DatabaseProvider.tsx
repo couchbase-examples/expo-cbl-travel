@@ -7,17 +7,22 @@ type DatabaseProviderProps = {
 }
 
 const DatabaseProvider: React.FC<DatabaseProviderProps> = ({children}) => {
-    const dbService = new DatabaseService();
-    const [databaseService, setDatabaseService] = useState<DatabaseService>(dbService);
+    const [databaseService] = useState<DatabaseService>(new DatabaseService());
+    const [isInitialized, setIsInitialized] = useState(false);
 
     useEffect(() => {
         const initializeDatabase = async () => {
-            await dbService.initializeDatabase();
+            try {
+                await databaseService.initializeDatabase();
+                setIsInitialized(true);
+            } catch (error) {
+                console.error("Database initialization failed:", error);
+            }
         };
-        initializeDatabase().then().catch(e => console.error(e));
-    }, [dbService]);
+        initializeDatabase()
+    }, [databaseService]);
 
-    const databaseServiceValue = useMemo(() => ({databaseService, setDatabaseService}), [databaseService, setDatabaseService]);
+    const databaseServiceValue = useMemo(() => ({databaseService, isInitialized}), [databaseService, isInitialized]);
     return (
         <DatabaseContext.Provider value={databaseServiceValue}>
             {children}

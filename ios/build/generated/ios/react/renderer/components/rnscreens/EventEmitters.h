@@ -65,6 +65,11 @@ class RNSModalScreenEventEmitter : public ViewEventEmitter {
   struct OnHeaderBackButtonClicked {
       
     };
+
+  struct OnSheetDetentChanged {
+      int index;
+    bool isStable;
+    };
   void onAppear(OnAppear value) const;
 
   void onDisappear(OnDisappear value) const;
@@ -84,8 +89,24 @@ class RNSModalScreenEventEmitter : public ViewEventEmitter {
   void onGestureCancel(OnGestureCancel value) const;
 
   void onHeaderBackButtonClicked(OnHeaderBackButtonClicked value) const;
+
+  void onSheetDetentChanged(OnSheetDetentChanged value) const;
 };
 class RNSScreenContainerEventEmitter : public ViewEventEmitter {
+ public:
+  using ViewEventEmitter::ViewEventEmitter;
+
+  
+  
+};
+class RNSScreenContentWrapperEventEmitter : public ViewEventEmitter {
+ public:
+  using ViewEventEmitter::ViewEventEmitter;
+
+  
+  
+};
+class RNSScreenFooterEventEmitter : public ViewEventEmitter {
  public:
   using ViewEventEmitter::ViewEventEmitter;
 
@@ -137,6 +158,11 @@ class RNSScreenEventEmitter : public ViewEventEmitter {
   struct OnHeaderBackButtonClicked {
       
     };
+
+  struct OnSheetDetentChanged {
+      int index;
+    bool isStable;
+    };
   void onAppear(OnAppear value) const;
 
   void onDisappear(OnDisappear value) const;
@@ -156,6 +182,8 @@ class RNSScreenEventEmitter : public ViewEventEmitter {
   void onGestureCancel(OnGestureCancel value) const;
 
   void onHeaderBackButtonClicked(OnHeaderBackButtonClicked value) const;
+
+  void onSheetDetentChanged(OnSheetDetentChanged value) const;
 };
 class RNSScreenNavigationContainerEventEmitter : public ViewEventEmitter {
  public:
