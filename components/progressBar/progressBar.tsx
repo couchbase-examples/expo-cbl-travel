@@ -26,7 +26,6 @@ export const ProgressBar: React.FC = () => {
           const completed = change.status.getProgress().getCompleted();
           const total = change.status.getProgress().getTotal();
 
-          console.log(`Progress: ${completed}/${total}`);
           if (total === 0) {
             setProgress(0);
             setIsVisible(false);
@@ -87,14 +86,14 @@ export const ProgressBar: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    bottom: 80, // Adjust based on your tab bar height (typically 80-90)
+    bottom: 80,
     left: 0,
     right: 0,
     paddingHorizontal: 16,
     paddingVertical: 4,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#e0e0e0",
-    zIndex: 1000, // Ensure it appears above other components
+    zIndex: 1000, 
   },
   textContainer: {
     flexDirection: "row",
