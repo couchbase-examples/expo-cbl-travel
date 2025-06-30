@@ -14,9 +14,9 @@ namespace facebook::react {
 
 extern const char RNSFullWindowOverlayComponentName[] = "RNSFullWindowOverlay";
 extern const char RNSScreenContainerComponentName[] = "RNSScreenContainer";
+extern const char RNSScreenContentWrapperComponentName[] = "RNSScreenContentWrapper";
+extern const char RNSScreenFooterComponentName[] = "RNSScreenFooter";
 extern const char RNSScreenNavigationContainerComponentName[] = "RNSScreenNavigationContainer";
-extern const char RNSScreenStackHeaderConfigComponentName[] = "RNSScreenStackHeaderConfig";
-extern const char RNSScreenStackHeaderSubviewComponentName[] = "RNSScreenStackHeaderSubview";
 extern const char RNSScreenStackComponentName[] = "RNSScreenStack";
 extern const char RNSSearchBarComponentName[] = "RNSSearchBar";
 

@@ -18,9 +18,9 @@ void rnscreens_registerComponentDescriptorsFromCodegen(
   std::shared_ptr<const ComponentDescriptorProviderRegistry> registry) {
 registry->add(concreteComponentDescriptorProvider<RNSFullWindowOverlayComponentDescriptor>());
 registry->add(concreteComponentDescriptorProvider<RNSScreenContainerComponentDescriptor>());
+registry->add(concreteComponentDescriptorProvider<RNSScreenContentWrapperComponentDescriptor>());
+registry->add(concreteComponentDescriptorProvider<RNSScreenFooterComponentDescriptor>());
 registry->add(concreteComponentDescriptorProvider<RNSScreenNavigationContainerComponentDescriptor>());
-registry->add(concreteComponentDescriptorProvider<RNSScreenStackHeaderConfigComponentDescriptor>());
-registry->add(concreteComponentDescriptorProvider<RNSScreenStackHeaderSubviewComponentDescriptor>());
 registry->add(concreteComponentDescriptorProvider<RNSScreenStackComponentDescriptor>());
 registry->add(concreteComponentDescriptorProvider<RNSSearchBarComponentDescriptor>());
 }

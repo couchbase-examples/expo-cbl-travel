@@ -25,7 +25,8 @@
     },
     "plugins": [
       "expo-router",
-      "./plugin.config.js"
+      "./plugin.config.js",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

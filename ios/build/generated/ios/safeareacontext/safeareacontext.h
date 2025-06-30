@@ -151,6 +151,16 @@ namespace JS {
 - (facebook::react::ModuleConstants<JS::NativeSafeAreaContext::Constants::Builder>)getConstants;
 
 @end
+
+@interface NativeSafeAreaContextSpecBase : NSObject {
+@protected
+facebook::react::EventEmitterCallback _eventEmitterCallback;
+}
+- (void)setEventEmitterCallback:(EventEmitterCallbackWrapper *)eventEmitterCallbackWrapper;
+
+
+@end
+
 namespace facebook::react {
   /**
    * ObjC++ class for module 'NativeSafeAreaContext'

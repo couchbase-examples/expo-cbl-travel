@@ -49,6 +49,16 @@
 - (void)flushOperations;
 
 @end
+
+@interface NativeRNGestureHandlerModuleSpecBase : NSObject {
+@protected
+facebook::react::EventEmitterCallback _eventEmitterCallback;
+}
+- (void)setEventEmitterCallback:(EventEmitterCallbackWrapper *)eventEmitterCallbackWrapper;
+
+
+@end
+
 namespace facebook::react {
   /**
    * ObjC++ class for module 'NativeRNGestureHandlerModule'
