@@ -1,34 +1,27 @@
-import { Database, LogDomain, LogLevel } from "cbl-reactnative";
+import { LogDomain, LogLevel, LogSinks } from "cbl-reactnative";
 
 /**
- * Starts logging for the database using the static method.
- *
- * CBL 3.3 Logging Patterns:
+ * Configures console logging for Couchbase Lite using the LogSinks API.
  * 
- * 1. Console Logging (Static - Global):
- *    await Database.setLogLevel(LogDomain.ALL, LogLevel.DEBUG);
- *    Use this for global logging configuration before database is created.
+ * This sets up DEBUG level logging for all domains to help with development
+ * and troubleshooting. The LogSinks API is the recommended approach for 
+ * configuring logging in CBL 3.3+.
  * 
- * 2. Console Logging (Instance - Preferred):
- *    await database.setLogLevel(LogDomain.ALL, LogLevel.DEBUG);
- *    Use this after database is initialized for better encapsulation.
+ * Features:
+ * - Safe to call multiple times without conflicts
+ * - Works seamlessly with database initialization logging
+ * - Provides flexible configuration options
+ * - Outputs logs to the console for easy debugging
  * 
- * 3. File Logging (Instance):
- *    await database.log.setFileConfig({
- *      level: LogLevel.INFO,
- *      directory: '/path/to/logs',
- *      maxRotateCount: 5,
- *      maxSize: 1024 * 1024 * 10
- *    });
+ * Note: Logging is also configured in DatabaseService.initializeDatabase(),
+ * so this function is optional if the database is initialized first.
  *
- * NOTE: In this app, logging is configured in DatabaseService.initializeDatabase()
- * using the instance method (preferred CBL 3.3 pattern).
- *
- * @returns {Promise<void>} A promise that resolves when the log level is set.
- * @throws Will throw an error if setting the log level fails.
+ * @returns {Promise<void>} A promise that resolves when logging is configured.
+ * @throws Will throw an error if setting the log configuration fails.
  */
 export async function startLogging(): Promise<void> {
-	// Static method - use before database is created
-	// For instance-based logging, see database.service.ts
-	await Database.setLogLevel(LogDomain.ALL, LogLevel.DEBUG);
+	await LogSinks.setConsole({
+		level: LogLevel.DEBUG,
+		domains: [LogDomain.ALL]
+	});
 }
