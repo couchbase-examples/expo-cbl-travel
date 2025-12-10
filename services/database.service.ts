@@ -2,6 +2,7 @@ import {
     BasicAuthenticator,
     CblReactNativeEngine,
     Collection,
+    CollectionConfig,
     Database,
     DatabaseConfiguration,
     FileSystem,
@@ -17,6 +18,14 @@ import {
 
 /**
  * Service class for managing the database and its replication.
+ *
+ * This service implements Couchbase Lite 3.3 APIs including:
+ * - CollectionConfig for replicator configuration with optional channels and documentIds filters
+ * - Collection.database and Collection.fullName() properties for improved database operations
+ * - Collection-based replication with proper configuration
+ * - Instance-based logging using database.setLogLevel() instead of static method
+ *
+ * @version CBL 3.3
  */
 export class DatabaseService {
     private database: Database | undefined;
@@ -44,6 +53,8 @@ export class DatabaseService {
      *`inventory` scope of the database. If the collections are found, they
      * are added to an array and returned.
      *
+     * CBL 3.3: Uses collection.fullName() and collection.database properties for better logging.
+     *
      * @returns {Promise<Collection[]>} A promise that resolves to an array of `Collection` objects.
      * @throws Will throw an error if the database is not initialized.
      */
@@ -53,9 +64,11 @@ export class DatabaseService {
         const landmarkCollection = await this.database?.collection('landmark', 'inventory');
         if (hotelCollection !== undefined) {
             collections.push(hotelCollection);
+            console.debug(`Added collection: ${hotelCollection.fullName()} from database: ${hotelCollection.database.getName()}`);
         }
         if (landmarkCollection !== undefined) {
             collections.push(landmarkCollection);
+            console.debug(`Added collection: ${landmarkCollection.fullName()} from database: ${landmarkCollection.database.getName()}`);
         }
         return collections;
     }
@@ -123,14 +136,21 @@ export class DatabaseService {
 
     /**
      * Initializes the database by setting up logging and configuring the database.
+     *
+     * CBL 3.3: Uses instance method for logging configuration instead of static method.
+     * This follows the modern pattern of database.setLogLevel() for console logging.
+     *
      * @public
      * @throws Will throw an error if the database initialization fails.
      */
     public async initializeDatabase() {
         try {
-            //turned on database logging too verbose to see information in IDE
-            await Database.setLogLevel(LogDomain.ALL, LogLevel.DEBUG);
             await this.setupDatabase();
+            
+            // CBL 3.3: Use instance method for logging configuration
+            // This provides better encapsulation and follows the database.log pattern
+            await this.database?.setLogLevel(LogDomain.ALL, LogLevel.DEBUG);
+            
             const path = await this.database?.getPath()
             console.debug(`Database Setup with path: ${path}`);
             await this.setupIndexes();
@@ -270,6 +290,9 @@ export class DatabaseService {
      *
      * The replicator is configured to run continuously and accept only self-signed certificates.
      *
+     * CBL 3.3: Uses CollectionConfig to configure replication for collections. You can specify
+     * channels and documentIds filters in the CollectionConfig if needed.
+     *
      * @private
      * @throws Will throw an error if no collections are found to set the replicator to.
      */
@@ -287,8 +310,14 @@ export class DatabaseService {
             //****************************************************************
             const auth = new BasicAuthenticator('demo@example.com', 'P@ssw0rd12');
 
+            // CBL 3.3: Create CollectionConfig for replication
+            // Pass undefined for channels and documentIds to sync all documents
+            // To filter by channels: new CollectionConfig(['channel1', 'channel2'], undefined)
+            // To filter by documentIds: new CollectionConfig(undefined, ['doc1', 'doc2'])
+            const collectionConfig = new CollectionConfig(undefined, undefined);
+
             const config = new ReplicatorConfiguration(targetUrl);
-            config.addCollections(collections);
+            config.addCollections(collections, collectionConfig);
             config.setAuthenticator(auth);
             config.setContinuous(true);
             config.setAcceptOnlySelfSignedCerts(false);

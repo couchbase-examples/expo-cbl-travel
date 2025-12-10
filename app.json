@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.couchbase.expo.ts"
+      "bundleIdentifier": "com.couchbase.expo.ts",
+      "deploymentTarget": "15.0"
     },
     "android": {
       "adaptiveIcon": {

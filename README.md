@@ -6,6 +6,14 @@ This is an example app of a simple React Native app that uses the [Couchbase Lit
 
 This app assumes you have a Capella Free Tier operational cluster with the travel-sample dataset installed.  To find out more information about the free tier, please visit this blog post [Couchbase Cloud](https://www.couchbase.com/blog/free-tier-capella-dev-available/).
 
+## Couchbase Lite Version
+
+This application uses **Couchbase Lite 3.3** with the following features:
+- **CollectionConfig**: Replicator configuration with support for channels and documentIds filtering
+- **Collection Properties**: Using `collection.database` and `collection.fullName()` for improved code clarity
+- **Collection-based Replication**: Modern approach to configuring replication with collections
+- **Instance-based Logging**: Using `database.setLogLevel()` for better encapsulation
+
 ## App Services Setup
 Log into your Capella Free-Tier account.  A listing of Operational Clusters should appear.  Click on your demo-cluster in the listing.  This should bring up the Home page for your cluster.
 
