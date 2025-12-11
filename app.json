@@ -30,6 +30,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "capellaEndpointUrl": "wss://xxxxxx.apps.cloud.couchbase.com:4984/travel-location",
+      "capellaUsername": "demo@example.com",
+      "capellaPassword": "P@ssw0rd12"
     }
   }
 }

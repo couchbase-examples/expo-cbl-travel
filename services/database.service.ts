@@ -16,6 +16,7 @@ import {
     URLEndpoint,
     ValueIndexItem,
 } from 'cbl-reactnative';
+import Constants from 'expo-constants';
 
 /**
  * Service class for managing the database and its replication.
@@ -282,20 +283,22 @@ export class DatabaseService {
         const collections = await this.getCollections();
         if (collections.length > 0) {
 
-            //****************************************************************
-            //YOU MUST CHANGE THIS TO YOUR CAPELLA CONNECTION STRING
-            //****************************************************************
-            const targetUrl = new URLEndpoint('wss://nasm0fvdr-jnehnb.apps.cloud.couchbase.com:4984/amicablestevewhittaker');
+            // Get configuration from app.json extra field
+            const endpointUrl = Constants.expoConfig?.extra?.capellaEndpointUrl;
+            const username = Constants.expoConfig?.extra?.capellaUsername;
+            const password = Constants.expoConfig?.extra?.capellaPassword;
 
-            //****************************************************************
-            //YOU MUST CREATE THIS USER IN YOUR CAPPELLA APP SERVICE ENDPOINT
-            //****************************************************************
-            const auth = new BasicAuthenticator('jayantdhingra', 'f9yu5QT4B5jpZep@');
+            if (!endpointUrl || !username || !password) {
+                throw new Error('Capella configuration missing. Please update app.json with your Capella credentials.');
+            }
 
-            // NEW API: Create CollectionConfiguration for each collection
+            const targetUrl = new URLEndpoint(endpointUrl);
+            const auth = new BasicAuthenticator(username, password);
+
+            // Create CollectionConfiguration for each collection
             const collectionConfigs = collections.map(col => new CollectionConfiguration(col));
             
-            // NEW API: Pass configurations and endpoint to constructor
+            // Pass configurations and endpoint to constructor
             const config = new ReplicatorConfiguration(collectionConfigs, targetUrl);
             config.setAuthenticator(auth);
             config.setContinuous(true);
