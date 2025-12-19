@@ -30,6 +30,7 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
 
 # typescript
 *.tsbuildinfo
@@ -43,3 +44,55 @@ expo-env.d.ts
 #IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+
+# iOS
+ios/Pods/
+ios/build/
+ios/Podfile.lock
+*.xcworkspace
+!default.xcworkspace
+xcuserdata/
+*.xcuserdatad
+*.xcuserstate
+*.xcscmblueprint
+.xcode.env.local
+DerivedData/
+
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/debug.keystore
+android/captures/
+android/.cxx/
+*.apk
+*.aab
+*.dex
+*.class
+*.hprof
+
+# Gradle wrapper
+!gradle-wrapper.jar
+
+# Build artifacts
+*.ipa
+build/
+
+# Test coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/

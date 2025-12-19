@@ -106,13 +106,32 @@ npm install
 
 ### Update the Configuration
 
+**IMPORTANT: Security Best Practices**
+
+⚠️ **Never commit sensitive credentials to version control!**
+
+The `app.json` file in this repository contains placeholder values. You have two options to configure your credentials:
+
+#### Option 1: Local Configuration (Recommended)
+1. Copy `app.config.example.json` to create your local configuration
+2. Update the values in `app.json` with your actual credentials
+3. Make sure `app.json` is never committed with real credentials
+
+#### Option 2: Environment Variables
+Create a `.env.local` file with your credentials (this file is ignored by git):
+```bash
+CAPELLA_ENDPOINT_URL=wss://your-endpoint.apps.cloud.couchbase.com:4984/your-database
+CAPELLA_USERNAME=your-username@example.com
+CAPELLA_PASSWORD=your-secure-password
+```
+
 Open the `app.json` file and locate the `extra` section at the bottom. You will need to update three configuration values:
 
 ```json
 "extra": {
-  "capellaEndpointUrl": "wss://xxxxxx.apps.cloud.couchbase.com:4984/travel-location",
-  "capellaUsername": "demo@example.com",
-  "capellaPassword": "P@ssw0rd12"
+  "capellaEndpointUrl": "REPLACE_WITH_YOUR_CAPELLA_ENDPOINT",
+  "capellaUsername": "REPLACE_WITH_YOUR_USERNAME",
+  "capellaPassword": "REPLACE_WITH_YOUR_PASSWORD"
 }
 ```
 
@@ -133,7 +152,52 @@ Replace the following values:
 
 ### Running the app
 
-To run an expo app, you can use the following command:
+#### iOS Setup
+
+**Prerequisites:**
+- macOS with Xcode installed
+- CocoaPods installed (`sudo gem install cocoapods`)
+- iOS 15.0+ simulator or device
+
+**Steps:**
+1. Install iOS dependencies:
+```bash
+cd ios && pod install && cd ..
+```
+
+2. Run the iOS app:
+```bash
+npx expo run:ios
+```
+
+Or use the Expo development server:
+```bash
+npm run start
+# Then press 'i' to open iOS simulator
+```
+
+#### Android Setup
+
+**Prerequisites:**
+- Android Studio installed
+- Android SDK 24 (Android 7.0) or higher
+- Android emulator or physical device
+
+**Steps:**
+1. Run the Android app:
+```bash
+npx expo run:android
+```
+
+Or use the Expo development server:
+```bash
+npm run start
+# Then press 'a' to open Android emulator
+```
+
+#### Development Server
+
+To run an expo development server with more options:
 
 ```bash
 npm run start
