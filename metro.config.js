@@ -12,18 +12,37 @@ config.watchFolders = [cblReactNativePath];
 // Configure the resolver to find the local package
 config.resolver.nodeModulesPaths = [
   path.resolve(__dirname, 'node_modules'),
+  path.resolve(cblReactNativePath, 'node_modules'),
 ];
 
-// Add extra node modules to resolve
-config.resolver.extraNodeModules = {
-  'cbl-reactnative': cblReactNativePath,
-};
+// Add extra node modules to resolve - point to the lib folder
+config.resolver.extraNodeModules = new Proxy(
+  {
+    'cbl-reactnative': cblReactNativePath,
+  },
+  {
+    get: (target, name) => {
+      if (target.hasOwnProperty(name)) {
+        return target[name];
+      }
+      // Fallback to the project's node_modules
+      return path.join(__dirname, 'node_modules', name);
+    },
+  }
+);
 
-// Exclude node_modules inside cbl-reactnative to avoid duplicate dependencies
+// Exclude problematic directories to avoid duplicate dependencies and recursive symlinks
 config.resolver.blockList = [
-  new RegExp(`${cblReactNativePath.replace(/[/\\]/g, '[/\\\\]')}/node_modules/.*`),
-  new RegExp(`${cblReactNativePath.replace(/[/\\]/g, '[/\\\\]')}/expo-example/.*`),
+  /.*\/cbl-reactnative\/node_modules\/react-native\/.*/,
+  /.*\/cbl-reactnative\/node_modules\/react\/.*/,
+  /.*\/cbl-reactnative\/expo-example\/.*/,
+  /.*\/cbl-reactnative\/couchbase-lite-ios\/.*/,
+  /.*\/cbl-reactnative\/cbl-reactnative-docs\/.*/,
+  /.*\/cbl-reactnative\/ios-swift-quickstart\/.*/,
 ];
+
+// Enable symlinks
+config.resolver.unstable_enableSymlinks = true;
 
 module.exports = config;
 

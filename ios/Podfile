@@ -68,20 +68,11 @@ target 'expocbltravel' do
       end
     end
 
-    # Fix TARGET_IPHONE_SIMULATOR not available in Swift issue in expo-dev-menu
-    dev_menu_swift_file = File.join(
-      Pod::Config.instance.installation_root,
-      '../node_modules/expo-dev-menu/ios/DevMenuViewController.swift'
-    )
-    if File.exist?(dev_menu_swift_file)
-      content = File.read(dev_menu_swift_file)
-      if content.include?('TARGET_IPHONE_SIMULATOR')
-        fixed_content = content.gsub(
-          /let isSimulator = TARGET_IPHONE_SIMULATOR > 0/,
-          "#if targetEnvironment(simulator)\n    let isSimulator = true\n    #else\n    let isSimulator = false\n    #endif"
-        )
-        File.write(dev_menu_swift_file, fixed_content)
-        Pod::UI.puts "Patched expo-dev-menu TARGET_IPHONE_SIMULATOR issue".green
+    # Fix for expo-dev-menu TARGET_IPHONE_SIMULATOR issue
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'TARGET_IPHONE_SIMULATOR=1' if config.build_settings['PLATFORM_NAME'] == 'iphonesimulator'
       end
     end
   end

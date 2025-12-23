@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "patch-package",
     "prebuild:clean": "expo prebuild --clean",
     "prebuild": "expo prebuild",
     "start": "expo start",
@@ -50,9 +51,9 @@
     "@types/react-test-renderer": "^18.0.7",
     "jest": "^29.2.1",
     "jest-expo": "~51.0.4",
+    "patch-package": "^8.0.0",
     "react-test-renderer": "18.2.0",
     "typescript": "~5.3.3"
   },
-  "private": true,
-  "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
+  "private": true
 }
