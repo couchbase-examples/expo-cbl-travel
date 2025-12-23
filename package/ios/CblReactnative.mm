@@ -5,6 +5,32 @@
 
 // MARK: - Collection Functions
 
+RCT_EXTERN_METHOD(
+  collection_AddChangeListener:(NSString *)changeListenerToken
+  fromCollectionWithName:(NSString *)collectionName
+  fromDatabaseWithName:(NSString *)name
+  fromScopeWithName:(NSString *)scopeName
+  withResolver:(RCTPromiseResolveBlock)resolve
+  withRejecter:(RCTPromiseRejectBlock)reject
+)
+
+RCT_EXTERN_METHOD(
+  collection_AddDocumentChangeListener:(NSString *)changeListenerToken
+  forDocumentWithId:(NSString *)documentId
+  fromCollectionWithName:(NSString *)collectionName
+  fromDatabaseWithName:(NSString *)name
+  fromScopeWithName:(NSString *)scopeName
+  withResolver:(RCTPromiseResolveBlock)resolve
+  withRejecter:(RCTPromiseRejectBlock)reject
+)
+
+
+RCT_EXTERN_METHOD(
+  collection_RemoveChangeListener:(NSString *)changeListenerToken
+  withResolver:(RCTPromiseResolveBlock)resolve
+  withRejecter:(RCTPromiseRejectBlock)reject
+)
+
 RCT_EXTERN_METHOD(collection_CreateCollection:
   (NSString *) collectionName
   fromDatabaseWithName:(NSString *) name
@@ -82,6 +108,14 @@ RCT_EXTERN_METHOD(collection_GetCount:
   withResolver:(RCTPromiseResolveBlock)resolve
   withRejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(collection_GetFullName: 
+  (NSString *) collectionName
+  fromDatabaseWithName: (NSString *) name
+  fromScopeWithName: (NSString *) scopeName
+  withResolver:(RCTPromiseResolveBlock)resolve
+  withRejecter:(RCTPromiseRejectBlock)reject
+)
+
 RCT_EXTERN_METHOD(collection_GetDefault:
   (NSString *)name
   withResolver:(RCTPromiseResolveBlock)resolve
@@ -119,7 +153,8 @@ RCT_EXTERN_METHOD(collection_PurgeDocument:
   withRejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(collection_Save:
-  (NSDictionary *) document
+  (NSString *) document
+  withBlobs: (NSString *) blobs
   withDocumentId: (NSString *) docId
   fromDatabaseWithName:(NSString *) name
   fromScopeWithName:(NSString *) scopeName
@@ -190,6 +225,10 @@ RCT_EXTERN_METHOD(database_PerformMaintenance:
 
 RCT_EXTERN_METHOD(file_GetDefaultPath:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(listenerToken_Remove:(NSString *)changeListenerToken
+                  withResolver:(RCTPromiseResolveBlock)resolve
+                  withRejecter:(RCTPromiseRejectBlock)reject)
+                  
 // MARK: - Logging Functions
 
 RCT_EXTERN_METHOD(database_SetFileLoggingConfig:
@@ -207,7 +246,41 @@ RCT_EXTERN_METHOD(database_SetLogLevel:(NSString *)domain
     withResolver:(RCTPromiseResolveBlock)resolve
     withRejecter:(RCTPromiseRejectBlock)reject)
 
+// MARK: - LogSinks Functions
+
+RCT_EXTERN_METHOD(logsinks_SetConsole:
+    (nonnull NSNumber *)level
+    withDomains:(nonnull NSArray *)domains
+    withResolver:(RCTPromiseResolveBlock)resolve
+    withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(logsinks_SetFile:
+    (nonnull NSNumber *)level
+    withConfig:(nonnull NSDictionary *)config
+    withResolver:(RCTPromiseResolveBlock)resolve
+    withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(logsinks_SetCustom:
+    (nonnull NSNumber *)level
+    withDomains:(nonnull NSArray *)domains
+    withToken:(nonnull NSString *)token
+    withResolver:(RCTPromiseResolveBlock)resolve
+    withRejecter:(RCTPromiseRejectBlock)reject)
+
 // MARK: - SQL++ Query Functions
+
+RCT_EXTERN_METHOD(query_AddChangeListener:
+  (NSString *)changeListenerToken
+  withQuery:(NSString *)query
+  withParameters:(NSDictionary *)parameters
+  fromDatabaseWithName:(NSString *)name
+  withResolver:(RCTPromiseResolveBlock)resolve
+  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(query_RemoveChangeListener:
+  (NSString *)changeListenerToken
+  withResolver:(RCTPromiseResolveBlock)resolve
+  withRejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(query_Execute:
   (NSString *)query
@@ -226,6 +299,12 @@ RCT_EXTERN_METHOD(query_Explain:
 // MARK: - Replicator Functions
 
 RCT_EXTERN_METHOD(replicator_AddChangeListener:
+  (NSString *)changeListenerToken
+  withReplicatorId:(NSString *)replicatorId
+  withResolver:(RCTPromiseResolveBlock)resolve
+  withRejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(replicator_AddDocumentChangeListener:
   (NSString *)changeListenerToken
   withReplicatorId:(NSString *)replicatorId
   withResolver:(RCTPromiseResolveBlock)resolve

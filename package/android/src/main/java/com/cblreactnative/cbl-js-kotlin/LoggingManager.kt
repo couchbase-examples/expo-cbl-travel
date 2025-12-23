@@ -1,4 +1,4 @@
-package cbl.js.kotiln
+package cbl.js.kotlin
 
 import com.couchbase.lite.*
 import java.util.EnumSet
@@ -24,7 +24,7 @@ object LoggingManager {
 
     fun setLogLevel(logDomain: String, logLevel: Int) {
         when (logDomain) {
-            "ALL" -> Database.log.console.domains = LogDomain.ALL_DOMAINS
+            "ALL" -> Database.log.console.domains = EnumSet.copyOf(LogDomain.ALL)
             "DATABASE" -> Database.log.console.domains = EnumSet.of(LogDomain.DATABASE)
             "NETWORK" -> Database.log.console.domains = EnumSet.of(LogDomain.NETWORK)
             "QUERY" -> Database.log.console.domains = EnumSet.of(LogDomain.QUERY)

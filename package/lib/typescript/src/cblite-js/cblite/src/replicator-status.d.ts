@@ -4,10 +4,10 @@ export declare class ReplicatorStatus {
     private activityLevel;
     private progress;
     private error;
-    constructor(activityLevel: ReplicatorActivityLevel, progress: ReplicatorProgress, error: String | undefined);
+    constructor(activityLevel: ReplicatorActivityLevel, progress: ReplicatorProgress, error: string | undefined);
     getActivityLevel(): ReplicatorActivityLevel;
     getProgress(): ReplicatorProgress;
-    getError(): String | undefined;
+    getError(): string | undefined;
     toString(): string;
     copy(): ReplicatorStatus;
 }

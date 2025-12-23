@@ -1,6 +1,5 @@
 //
 //  DatabaseManager.swift
-//  Created by Aaron LaBeau on 07/04/24.
 //
 
 import Foundation
@@ -35,6 +34,9 @@ public class DatabaseManager {
     private var defaultCollectionName: String = "_default"
     private var defaultScopeName: String = "_default"
 
+    private let databaseQueue = DispatchQueue(label: "com.couchbase.lite.database.access")
+
+
     // MARK: - Singleton
     public static let shared = DatabaseManager()
 
@@ -46,12 +48,9 @@ public class DatabaseManager {
     // MARK: - Helper Functions
 
     public func getDatabase(_ name: String) -> Database? {
-        objc_sync_enter(openDatabases)
-        defer {
-            objc_sync_exit(openDatabases)
+        return databaseQueue.sync {
+            return openDatabases[name]
         }
-
-        return openDatabases[name]
     }
 
     public func buildDatabaseConfig(_ config: [AnyHashable: Any]?) -> DatabaseConfiguration {
@@ -70,15 +69,17 @@ public class DatabaseManager {
 
     // MARK: Database Functions
 
-    public func open(_ databaseName: String, databaseConfig: [AnyHashable: Any]?) throws {
+    public func open(_ databaseName: String, databaseConfig: [AnyHashable: Any]?) throws -> String {
         do {
-            if self.openDatabases[databaseName] != nil {
-                self.openDatabases.removeValue(forKey: databaseName)
-            }
+            let nanoId = generateNanoId()
+            let uniqueName = "\(databaseName)_\(nanoId)"
             
             let config = self.buildDatabaseConfig(databaseConfig)
             let database = try Database(name: databaseName, config: config)
-            self.openDatabases[databaseName] = database
+
+            openDatabases[uniqueName] = database
+
+            return uniqueName
         } catch {
             throw DatabaseError.unableToOpenDatabase(databaseName: databaseName)
         }
@@ -100,8 +101,10 @@ public class DatabaseManager {
             throw DatabaseError.invalidDatabaseName(databaseName: databaseName)
         }
         do {
-            try database.delete()
-            openDatabases.removeValue(forKey: databaseName)
+            return try databaseQueue.sync {
+                try database.delete()
+                openDatabases.removeValue(forKey: databaseName)
+            }
         } catch {
             if let nsError = error as NSError?, nsError.code == 19 {
                 // SQLite error code 19 (SQLITE_CONSTRAINT) indicates that the database is locked.
@@ -316,4 +319,17 @@ public class DatabaseManager {
             throw QueryError.unknownError(message: error.localizedDescription)
         }
     }
+}
+
+func generateNanoId(size: Int = 21) -> String {
+    let alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    let characters = Array(alphabet)
+    var nanoId = ""
+
+    for _ in 0..<size {
+        let randomIndex = Int.random(in: 0..<characters.count)
+        nanoId.append(characters[randomIndex])
+    }
+
+    return nanoId
 }

@@ -5,10 +5,8 @@ import {
 } from './replicated-document';
 
 export class DocumentReplication {
-  constructor(
-    protected isPush: boolean,
-    protected documents: ReplicatedDocument[]
-  ) {}
+     // eslint-disable-next-line
+  constructor( protected isPush: boolean, protected documents: ReplicatedDocument[]) {}
 
   getIsPush(): boolean {
     return this.isPush;
@@ -24,10 +22,8 @@ export interface DocumentReplicationRepresentation {
   documents: ReplicatedDocumentRepresentation[];
 }
 
-export function isDocumentReplicationRepresentation(
-  obj: any
-): obj is DocumentReplicationRepresentation {
-  try {
+export function isDocumentReplicationRepresentation(obj: any): obj is DocumentReplicationRepresentation {
+   try {
     const object: DocumentReplicationRepresentation = obj;
     object.documents.forEach((document) => {
       if (!isReplicatedDocumentRepresentation(document)) {

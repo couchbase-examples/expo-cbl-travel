@@ -1,10 +1,12 @@
 package com.cblreactnative
 
-import cbl.js.kotiln.DatabaseManager
-import cbl.js.kotiln.CollectionManager
-import cbl.js.kotiln.FileSystemHelper
-import cbl.js.kotiln.LoggingManager
-import cbl.js.kotiln.ReplicatorManager
+import cbl.js.kotlin.DatabaseManager
+import cbl.js.kotlin.CollectionManager
+import cbl.js.kotlin.FileSystemHelper
+import cbl.js.kotlin.LoggingManager
+import cbl.js.kotlin.LogSinksManager
+import cbl.js.kotlin.ReplicatorManager
+import cbl.js.kotlin.ReplicatorHelper
 import com.couchbase.lite.*
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -14,12 +16,42 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
+/**
+ * Enum representing the type of listener.
+ * 
+ * This allows us to identify what kind of listener a token represents,
+ * useful for debugging and filtering.
+ */
+enum class ChangeListenerType {
+  COLLECTION,
+  COLLECTION_DOCUMENT,
+  QUERY,
+  REPLICATOR,
+  REPLICATOR_DOCUMENT
+}
+
+/**
+ * Metadata for storing listener information in unified dictionary.
+ * 
+ * This data class wraps the native ListenerToken along with its type.
+ * When adding a listener, we store both the token and its type.
+ * When removing a listener, we look up by UUID and get both back.
+ * 
+ * This eliminates the need to pass the type when removing - it's
+ * already stored in the metadata!
+ */
+data class ChangeListenerRecord(
+  val nativeListenerToken: ListenerToken,
+  val listenerType: ChangeListenerType
+)
 
 @OptIn(DelicateCoroutinesApi::class)
 @Suppress("FunctionName")
@@ -28,8 +60,15 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
 
   // Property to hold the context
   private val context: ReactApplicationContext = reactContext
-  private val replicatorChangeListeners: MutableMap<String, ListenerToken> = mutableMapOf()
-  private val replicatorDocumentListeners: MutableMap<String, ListenerToken> = mutableMapOf()
+     
+  /**
+   * Unified storage for all listener tokens.
+   * Maps UUID token string to ChangeListenerRecord (which contains native token + type)
+   */
+  private val allChangeListenerTokenByUuid: MutableMap<String, ChangeListenerRecord> = mutableMapOf()
+  
+  // Track whether JavaScript is listening for events
+  private var listenerCount = 0
 
   init {
     CouchbaseLite.init(context, true)
@@ -37,6 +76,19 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
 
   override fun getName(): String {
     return NAME
+  }
+
+  // Required for NativeEventEmitter - these methods are called by React Native
+  // when JS adds/removes listeners, but may not be reliable with Expo
+  @ReactMethod
+  fun addListener(eventName: String) {
+    listenerCount++
+  }
+
+  @ReactMethod
+  fun removeListeners(count: Int) {
+    listenerCount -= count
+    if (listenerCount < 0) listenerCount = 0
   }
 
   private fun sendEvent(
@@ -48,9 +100,9 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
       .emit(eventName, params)
   }
 
+
   // Collection Functions
   @ReactMethod
-
   fun collection_CreateCollection(
     collectionName: String,
     name: String,
@@ -331,6 +383,32 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun collection_GetFullName(
+    collectionName: String,
+    name: String,
+    scopeName: String,
+    promise: Promise
+  ) {
+    GlobalScope.launch(Dispatchers.IO) {
+      try {
+        if (!DataValidation.validateCollection(collectionName, scopeName, name, promise)) {
+          return@launch
+        }
+        val fullName = CollectionManager.fullName(collectionName, scopeName, name)
+        val map = Arguments.createMap()
+        map.putString("fullName", fullName)
+        context.runOnUiQueueThread {
+          promise.resolve(map)
+        }
+      } catch (e: Throwable) {
+        context.runOnUiQueueThread {
+          promise.reject("DATABASE_ERROR", e.message)
+        }
+      }
+    }
+  }
+
+  @ReactMethod
   fun collection_GetDefault(
     name: String,
     promise: Promise
@@ -366,26 +444,55 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
     scopeName: String,
     collectionName: String,
     promise: Promise
-  ){
+) {
     GlobalScope.launch(Dispatchers.IO) {
-      try {
-        if (!DataValidation.validateCollection(collectionName, scopeName, name, promise) ||
-          !DataValidation.validateDocumentId(docId, promise)
-        ) {
-          return@launch
+        try {
+            if (!DataValidation.validateCollection(collectionName, scopeName, name, promise) ||
+                !DataValidation.validateDocumentId(docId, promise)
+            ) {
+                return@launch
+            }
+
+            val doc = CollectionManager.getDocument(docId, collectionName, scopeName, name)
+            if (doc == null) {
+                context.runOnUiQueueThread {
+                    promise.resolve(Arguments.createMap()) 
+                }
+                return@launch
+            }
+
+            val documentJson = doc.toJSON()
+            if (!documentJson.isNullOrEmpty()) {
+                try {
+                    val test = JSONObject(documentJson)
+                    val map = DataAdapter.jsonObjectToMap(test)
+                    val documentMap = Arguments.makeNativeMap(map)
+                    val writableMap = Arguments.createMap()
+                    writableMap.putMap("_data", documentMap)
+
+                    writableMap.putString("_id", doc.id)
+                    writableMap.putDouble("_sequence", doc.sequence.toDouble())
+
+                    context.runOnUiQueueThread {
+                        promise.resolve(writableMap)
+                    }
+                } catch (e: Exception) {
+                    context.runOnUiQueueThread {
+                        promise.reject("DOCUMENT_ERROR", "Failed to parse document JSON: ${e.message}")
+                    }
+                }
+            } else {
+                context.runOnUiQueueThread {
+                    promise.resolve(Arguments.createMap()) 
+                }
+            }
+        } catch (e: Throwable) {
+            context.runOnUiQueueThread {
+                promise.reject("DOCUMENT_ERROR", e.message)
+            }
         }
-        val doc = CollectionManager.getDocument(docId, collectionName, scopeName, name)
-        val docMap = DataAdapter.documentToMap(doc)
-        context.runOnUiQueueThread {
-          promise.resolve(docMap)
-        }
-      } catch (e: Throwable) {
-        context.runOnUiQueueThread {
-          promise.reject("DOCUMENT_ERROR", e.message)
-        }
-      }
     }
-  }
+}
 
   @ReactMethod
   fun collection_GetDocumentExpiration(
@@ -482,7 +589,8 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun collection_Save(
-    document: ReadableMap,
+    document: String,
+    blobs: String,
     docId: String,
     name: String,
     scopeName: String,
@@ -503,21 +611,23 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
           concurrencyControl =
             DataAdapter.intToConcurrencyControl(concurrencyControlValue.toInt())
         }
-        val doc = DataAdapter.toMap(document).toMap()
         val result = CollectionManager.saveDocument(
           docId,
-          doc,
+          document,
+          blobs,
           concurrencyControl,
           collectionName,
           scopeName,
           name
         )
-        writableMap.putString("_id", result.first)
-        if (result.second != null) {
-          writableMap.putBoolean("concurrencyControlResult", result.second!!)
+        writableMap.putString("_id", result._id)
+        if (result._concurrencyControl != null) {
+          writableMap.putBoolean("concurrencyControlResult", result._concurrencyControl)
         } else {
           writableMap.putNull("concurrencyControlResult")
         }
+        writableMap.putString("_revId", result._revId)
+        writableMap.putInt("_sequence", result._sequence.toInt())
         context.runOnUiQueueThread {
           promise.resolve(writableMap)
         }
@@ -544,7 +654,7 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
         ) {
           return@launch
         }
-        CollectionManager.setDocumentExpiration(expiration, docId, collectionName, scopeName, name)
+        CollectionManager.setDocumentExpiration(docId, expiration, collectionName, scopeName, name)
         context.runOnUiQueueThread {
           promise.resolve(null)
         }
@@ -555,6 +665,169 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
       }
     }
   }
+  @ReactMethod
+fun collection_AddChangeListener(
+  changeListenerToken: String,
+  collectionName: String,
+  name: String,
+  scopeName: String,
+  promise: Promise
+) {
+  GlobalScope.launch(Dispatchers.IO) {
+    try {
+      if (!DataValidation.validateCollection(collectionName, scopeName, name, promise)) {
+        return@launch
+      }
+      val collection = DatabaseManager.getCollection(collectionName, scopeName, name)
+      if (collection == null) {
+        context.runOnUiQueueThread {
+          promise.reject("DATABASE_ERROR", "Could not find collection")
+        }
+        return@launch
+      }
+      val listener = collection.addChangeListener { change ->
+        val resultMap = Arguments.createMap()
+        resultMap.putString("token", changeListenerToken)
+        
+        val docIdsArray = Arguments.createArray()
+        change.documentIDs.forEach { docIdsArray.pushString(it) }
+        resultMap.putArray("documentIDs", docIdsArray)
+        
+        val collectionMap = DataAdapter.cblCollectionToMap(collection, name)
+        resultMap.putMap("collection", collectionMap)
+        context.runOnUiQueueThread {
+          sendEvent(context, "collectionChange", resultMap)
+        }
+      }
+      
+
+      // Store in unified dictionary with type
+      allChangeListenerTokenByUuid[changeListenerToken] = ChangeListenerRecord(
+        nativeListenerToken = listener,
+        listenerType = ChangeListenerType.COLLECTION
+      )
+
+      context.runOnUiQueueThread {
+        promise.resolve(null)
+      }
+    } catch (e: Throwable) {
+      context.runOnUiQueueThread {
+        promise.reject("DATABASE_ERROR", e.message)
+      }
+    }
+  }
+}
+
+@ReactMethod
+fun collection_RemoveChangeListener(
+  changeListenerToken: String,
+  promise: Promise
+) {
+  // Delegate to unified listener removal
+  listenerToken_Remove(changeListenerToken, promise)
+  
+}
+
+/**
+ * Generic method to remove any listener by its UUID token.
+ * 
+ * This is the unified removal method that works for all listener types:
+ * - Collection change listeners
+ * - Collection document change listeners
+ * - Query change listeners
+ * - Replicator status change listeners
+ * - Replicator document change listeners
+ * 
+ * The method looks up the listener by UUID in the unified storage,
+ * retrieves both the native token and its type, and removes it.
+ */
+@ReactMethod
+fun listenerToken_Remove(
+  changeListenerToken: String,
+  promise: Promise
+) {
+  GlobalScope.launch(Dispatchers.IO) {
+    try {
+      val listenerRecord = allChangeListenerTokenByUuid[changeListenerToken]
+      
+      if (listenerRecord != null) {
+        // Remove the listener using the native token
+        listenerRecord.nativeListenerToken.remove()
+        
+        // Remove from our unified storage
+        allChangeListenerTokenByUuid.remove(changeListenerToken)
+        
+        context.runOnUiQueueThread {
+          promise.resolve(null)
+        }
+      } else {
+        val errorMsg = "No listener found for token $changeListenerToken"
+        android.util.Log.e("CblReactnative", "::KOTLIN DEBUG:: listenerToken_Remove: $errorMsg")
+        context.runOnUiQueueThread {
+          promise.reject("LISTENER_ERROR", errorMsg)
+        }
+      }
+    } catch (e: Throwable) {
+      context.runOnUiQueueThread {
+        promise.reject("LISTENER_ERROR", e.message)
+      }
+    }
+  }
+}
+
+@ReactMethod
+fun collection_AddDocumentChangeListener(
+  changeListenerToken: String,
+  documentId: String,
+  collectionName: String,
+  name: String,
+  scopeName: String,
+  promise: Promise
+) {
+  GlobalScope.launch(Dispatchers.IO) {
+    try {
+      if (!DataValidation.validateCollection(collectionName, scopeName, name, promise) ||
+          !DataValidation.validateDocumentId(documentId, promise)
+      ) {
+        return@launch
+      }
+      val collection = DatabaseManager.getCollection(collectionName, scopeName, name)
+      if (collection == null) {
+        context.runOnUiQueueThread {
+          promise.reject("DATABASE_ERROR", "Could not find collection")
+        }
+        return@launch
+      }
+      val listener = collection.addDocumentChangeListener(documentId) { change ->
+        val resultMap = Arguments.createMap()
+        resultMap.putString("token", changeListenerToken)
+        resultMap.putString("documentId", change.documentID)
+        val collectionMap = DataAdapter.cblCollectionToMap(collection, name)
+        resultMap.putMap("collection", collectionMap)
+        
+        resultMap.putString("database", name)
+        context.runOnUiQueueThread {
+          sendEvent(context, "collectionDocumentChange", resultMap)
+        }
+      }
+
+      // Store in unified dictionary with type
+      allChangeListenerTokenByUuid[changeListenerToken] = ChangeListenerRecord(
+        nativeListenerToken = listener,
+        listenerType = ChangeListenerType.COLLECTION_DOCUMENT
+      )
+
+
+      context.runOnUiQueueThread {
+        promise.resolve(null)
+      }
+    } catch (e: Throwable) {
+      context.runOnUiQueueThread {
+        promise.reject("DATABASE_ERROR", e.message)
+      }
+    }
+  }
+}
 
   // Database Functions
   @ReactMethod
@@ -741,13 +1014,15 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
       }
       try {
         val databaseConfig = DataAdapter.toDatabaseConfigJson(directory, encryptionKey)
-        DatabaseManager.openDatabase(
+        val databaseUniqueName = DatabaseManager.openDatabase(
           name,
           databaseConfig,
           context
         )
         context.runOnUiQueueThread {
-          promise.resolve(null)
+          val result = Arguments.createMap()
+          result.putString("databaseUniqueName", databaseUniqueName)
+          promise.resolve(result)
         }
       } catch (e: Throwable) {
         context.runOnUiQueueThread {
@@ -919,37 +1194,155 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  // Replicator Functions
   @ReactMethod
-  fun replicator_AddChangeListener(
+  fun query_AddChangeListener(
     changeListenerToken: String,
-    replicatorId: String,
-    promise: Promise){
+    query: String,
+    parameters: ReadableMap?,
+    name: String,
+    promise: Promise
+  ) {
     GlobalScope.launch(Dispatchers.IO) {
       try {
-        if (!DataValidation.validateReplicatorId(replicatorId, promise)){
+        if (!DataValidation.validateDatabaseName(name, promise) || !DataValidation.validateQuery(query, promise)) {
           return@launch
         }
-        val replicator = ReplicatorManager.getReplicator(replicatorId)
-        val listener = replicator?.addChangeListener { change ->
-          val map = DataAdapter.replicatorStatusToMap(change.status)
+        val database = DatabaseManager.getDatabase(name)
+        if (database == null) {
           context.runOnUiQueueThread {
-            sendEvent(context, "replicatorStatusChange", map)
+            promise.reject("DATABASE_ERROR", "Could not find database with name $name")
+          }
+          return@launch
+        }
+        val queryObj = database.createQuery(query)
+        if (parameters != null && parameters.keySetIterator().hasNextKey()) {
+          val params = DataAdapter.readableMapToParameters(parameters)
+          queryObj.parameters = params
+        }
+        val listener = queryObj.addChangeListener { change ->
+          val resultMap = Arguments.createMap()
+          resultMap.putString("token", changeListenerToken)
+          change.results?.let { results ->
+            val resultList = mutableListOf<String>()
+            for (result in results) {
+              resultList.add(result.toJSON())
+            }
+            val jsonArray = "[" + resultList.joinToString(",") + "]"
+            resultMap.putString("data", jsonArray)
+          }
+          change.error?.let { error ->
+            resultMap.putString("error", error.localizedMessage)
+          }
+          context.runOnUiQueueThread {
+            sendEvent(context, "queryChange", resultMap)
           }
         }
-        listener?.let {
-          replicatorChangeListeners[changeListenerToken] = it
-        }
+        
+        // Store in unified dictionary with type
+        allChangeListenerTokenByUuid[changeListenerToken] = ChangeListenerRecord(
+          nativeListenerToken = listener,
+          listenerType = ChangeListenerType.QUERY
+        )
+
         context.runOnUiQueueThread {
           promise.resolve(null)
         }
       } catch (e: Throwable) {
         context.runOnUiQueueThread {
-          promise.reject("REPLICATOR_ERROR", e.message)
+          promise.reject("QUERY_ERROR", e.message)
         }
       }
     }
   }
+
+  @ReactMethod
+fun query_RemoveChangeListener(
+  changeListenerToken: String,
+  promise: Promise
+) {
+  // Delegate to unified listener removal
+  listenerToken_Remove(changeListenerToken, promise)
+  
+}
+
+  // Replicator Functions
+@ReactMethod
+fun replicator_AddChangeListener(
+  changeListenerToken: String,
+  replicatorId: String,
+  promise: Promise){
+  GlobalScope.launch(Dispatchers.IO) {
+    try {
+      if (!DataValidation.validateReplicatorId(replicatorId, promise)){
+        return@launch
+      }
+      val replicator = ReplicatorManager.getReplicator(replicatorId)
+      val listener = replicator?.addChangeListener { change ->
+        val statusMap = ReplicatorHelper.generateReplicatorStatusMap(change.status)
+        val resultMap = Arguments.createMap()
+        resultMap.putString("token", changeListenerToken)
+        resultMap.putMap("status", statusMap)
+        context.runOnUiQueueThread {
+          sendEvent(context, "replicatorStatusChange", resultMap)
+        }
+      }
+      listener?.let {
+        // Store in unified dictionary with type
+        allChangeListenerTokenByUuid[changeListenerToken] = ChangeListenerRecord(
+          nativeListenerToken = it,
+          listenerType = ChangeListenerType.REPLICATOR
+        )
+      }
+      context.runOnUiQueueThread {
+        promise.resolve(null)
+      }
+    } catch (e: Throwable) {
+      context.runOnUiQueueThread {
+        promise.reject("REPLICATOR_ERROR", e.message)
+      }
+    }
+  }
+}
+
+@ReactMethod
+fun replicator_AddDocumentChangeListener(
+  changeListenerToken: String,
+  replicatorId: String,
+  promise: Promise){
+  GlobalScope.launch(Dispatchers.IO) {
+    try {
+      if (!DataValidation.validateReplicatorId(replicatorId, promise)){
+        return@launch
+      }
+      val replicator = ReplicatorManager.getReplicator(replicatorId)
+      val listener = replicator?.addDocumentReplicationListener { change ->
+        val documentMap = ReplicatorHelper.generateDocumentReplicationMap(change.documents, change.isPush)
+        val resultMap = Arguments.createMap()
+        resultMap.putString("token", changeListenerToken)
+        resultMap.putMap("documents", documentMap)
+        context.runOnUiQueueThread {
+          sendEvent(context, "replicatorDocumentChange", resultMap)
+        }
+      }
+      listener?.let {
+        
+        // Store in unified dictionary with type
+        allChangeListenerTokenByUuid[changeListenerToken] = ChangeListenerRecord(
+          nativeListenerToken = it,
+          listenerType = ChangeListenerType.REPLICATOR_DOCUMENT
+        )
+      }
+      context.runOnUiQueueThread {
+        promise.resolve(null)
+      }
+    } catch (e: Throwable) {
+      context.runOnUiQueueThread {
+        promise.reject("REPLICATOR_ERROR", e.message)
+      }
+    }
+  }
+}
+
   @ReactMethod
   fun replicator_Cleanup(
     replicatorId: String,
@@ -971,26 +1364,27 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  @ReactMethod
-  fun replicator_Create(
-    config: ReadableMap,
-    promise: Promise) {
-    GlobalScope.launch(Dispatchers.IO) {
-      try {
-        val replicatorConfig = DataAdapter.readableMapToReplicatorConfig(config)
-        val replicatorId = ReplicatorManager.createReplicator(replicatorConfig)
-        val map = Arguments.createMap()
-        map.putString("replicatorId", replicatorId)
-        context.runOnUiQueueThread {
-          promise.resolve(map)
-        }
-      } catch (e: Throwable) {
-        context.runOnUiQueueThread {
-          promise.reject("REPLICATOR_ERROR", e.message)
-        }
+@ReactMethod
+fun replicator_Create(
+  config: ReadableMap,
+  promise: Promise) {
+  GlobalScope.launch(Dispatchers.IO) {
+    try {
+      // Use the ReplicatorHelper to create a configuration from the ReadableMap
+      val replicatorConfig = ReplicatorHelper.replicatorConfigFromJson(config)
+      val replicatorId = ReplicatorManager.createReplicator(replicatorConfig)
+      val map = Arguments.createMap()
+      map.putString("replicatorId", replicatorId)
+      context.runOnUiQueueThread {
+        promise.resolve(map)
+      }
+    } catch (e: Throwable) {
+      context.runOnUiQueueThread {
+        promise.reject("REPLICATOR_ERROR", e.message)
       }
     }
   }
+}
 
   @ReactMethod
   fun replicator_GetPendingDocumentIds(
@@ -1071,31 +1465,16 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  @ReactMethod
-  fun replicator_RemoveChangeListener(
-    changeListenerToken: String,
-    replicatorId: String,
-    promise: Promise) {
-    GlobalScope.launch(Dispatchers.IO) {
-      try {
-        if (!DataValidation.validateReplicatorId(replicatorId, promise)){
-          return@launch
-        }
-        val changeListener = replicatorChangeListeners[changeListenerToken]
-        changeListener?.let {
-          changeListener.remove()
-          replicatorChangeListeners.remove(changeListenerToken)
-        }
-        context.runOnUiQueueThread {
-          promise.resolve(null)
-        }
-      } catch (e: Throwable) {
-        context.runOnUiQueueThread {
-          promise.reject("REPLICATOR_ERROR", e.message)
-        }
-      }
-    }
-  }
+@ReactMethod
+fun replicator_RemoveChangeListener(
+  changeListenerToken: String,
+  replicatorId: String,
+  promise: Promise) {
+  // Delegate to unified listener removal
+  // Note: replicatorId parameter is not used anymore but must remain in signature for compatibility
+  listenerToken_Remove(changeListenerToken, promise)
+  
+}
 
   @ReactMethod
   fun replicator_ResetCheckpoint(
@@ -1127,7 +1506,7 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
         if (!DataValidation.validateReplicatorId(replicatorId, promise)){
           return@launch
         }
-        ReplicatorManager.start(replicatorId)
+        ReplicatorManager.start(replicatorId, false)
         context.runOnUiQueueThread {
           promise.resolve(null)
         }
@@ -1245,6 +1624,110 @@ class CblReactnativeModule(reactContext: ReactApplicationContext) :
       } catch (e: Throwable) {
         context.runOnUiQueueThread {
           promise.reject("SCOPE_ERROR", e.message)
+        }
+      }
+    }
+  }
+
+   // ============================================================
+  // LOG SINKS FUNCTIONS
+  // ============================================================
+
+  @ReactMethod
+  fun logsinks_SetConsole(
+    level: Double?,
+    domains: ReadableArray?,
+    promise: Promise
+  ) {
+    GlobalScope.launch(Dispatchers.IO) {
+      try {
+        // Convert Double? to Int?
+        val intLevel = level?.toInt()
+
+        // Convert ReadableArray? to List<String>?
+        val domainList = domains?.toArrayList()?.filterIsInstance<String>()
+
+        LogSinksManager.setConsoleSink(intLevel, domainList)
+
+        context.runOnUiQueueThread {
+          promise.resolve(null)
+        }
+      } catch (e: Throwable) {
+        context.runOnUiQueueThread {
+          promise.reject("LOGSINKS_ERROR", e.message)
+        }
+      }
+    }
+  }
+
+  @ReactMethod
+  fun logsinks_SetFile(
+    level: Double?,
+    config: ReadableMap?,
+    promise: Promise
+  ) {
+    GlobalScope.launch(Dispatchers.IO) {
+      try {
+        // Convert Double? to Int?
+        val intLevel = level?.toInt()
+
+        // Convert ReadableMap? to Map<String, Any>?
+        val configMap = config?.toHashMap()?.mapValues { it.value as Any }
+
+        LogSinksManager.setFileSink(intLevel, configMap)
+
+        context.runOnUiQueueThread {
+          promise.resolve(null)
+        }
+      } catch (e: Throwable) {
+        context.runOnUiQueueThread {
+          promise.reject("LOGSINKS_ERROR", e.message)
+        }
+      }
+    }
+  }
+
+  @ReactMethod
+  fun logsinks_SetCustom(
+    level: Double?,
+    domains: ReadableArray?,
+    token: String?,
+    promise: Promise
+  ) {
+    GlobalScope.launch(Dispatchers.IO) {
+      try {
+        // Convert Double? to Int?
+        val intLevel = level?.toInt()
+
+        // Convert ReadableArray? to List<String>?
+        val domainList = domains?.toArrayList()?.filterIsInstance<String>()
+
+        // Create callback only if enabling (not disabling)
+        val callback: ((LogLevel, LogDomain, String) -> Unit)? =
+          if (intLevel != null && token != null) {
+            { logLevel, logDomain, message ->
+              val eventData = Arguments.createMap()
+              eventData.putString("token", token)
+              eventData.putInt("level", logLevel.ordinal)
+              eventData.putString("domain", LogSinksManager.logDomainToString(logDomain))
+              eventData.putString("message", message)
+
+              // Note: React Native may show warnings about no listeners if events arrive before
+              // JS listener is fully initialized, but these warnings are harmless
+              context.runOnUiQueueThread {
+                sendEvent(context, "customLogMessage", eventData)
+              }
+            }
+          } else null
+
+        LogSinksManager.setCustomSink(intLevel, domainList, callback)
+
+        context.runOnUiQueueThread {
+          promise.resolve(null)
+        }
+      } catch (e: Throwable) {
+        context.runOnUiQueueThread {
+          promise.reject("LOGSINKS_ERROR", e.message)
         }
       }
     }

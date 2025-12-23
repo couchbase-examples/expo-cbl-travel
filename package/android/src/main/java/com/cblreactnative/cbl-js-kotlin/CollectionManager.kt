@@ -1,9 +1,12 @@
-package cbl.js.kotiln
+package cbl.js.kotlin
 
+import cbl.js.kotlin.CollectionDocumentResult
 import com.couchbase.lite.ConcurrencyControl
 import com.couchbase.lite.Document
 import com.couchbase.lite.Index
+import com.couchbase.lite.Blob
 import com.couchbase.lite.MutableDocument
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -79,6 +82,16 @@ object CollectionManager {
     }
 
     @Throws(Exception::class)
+    fun fullName(
+        collectionName: String,
+        scopeName: String,
+        databaseName: String
+    ): String {
+        val col = this.getCollection(collectionName, scopeName, databaseName)
+        return col?.fullName ?: throw Exception("Collection not found: $collectionName in scope: $scopeName")
+    }
+
+    @Throws(Exception::class)
     fun getBlobContent(key: String,
                        documentId: String,
                        collectionName: String,
@@ -93,6 +106,56 @@ object CollectionManager {
             }
         }
         return null
+    }
+
+
+    /**
+     * Converts a JSON string representation of blobs into a map of Blob objects.
+     *
+     * @param value The JSON string containing blob data. The string should be in the format:
+     *              {
+     *                  "blobKey1": {
+     *                      "data": {
+     *                          "contentType": "mime/type",
+     *                          "data": [byte1, byte2, ...]
+     *                      }
+     *                  },
+     *                  "blobKey2": {
+     *                      "data": {
+     *                          "contentType": "mime/type",
+     *                          "data": [byte1, byte2, ...]
+     *                      }
+     *                  }
+     *              }
+     *              If the string is empty or "[]", an empty map is returned.
+     * @return A map where the keys are the blob identifiers and the values are Blob objects.
+     * @throws Exception If the JSON string is malformed or if required fields are missing.
+     */
+    @Throws(Exception::class)
+    fun getBlobsFromString(
+        value: String):Map<String, Blob>
+    {
+        val items = mutableMapOf<String, Blob>()
+        if (value.isEmpty() || value == "[]") {
+            return items
+        }
+        val jsonObject = JSONObject(value)
+        val keys = jsonObject.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val jsonValue = jsonObject[key]
+            if (jsonValue is JSONObject) {
+                val blobData = jsonValue.getJSONObject("data")
+                val contentType = blobData.getString("contentType")
+                val byteData = blobData.getJSONArray("data")
+                val data = ByteArray(byteData.length())
+                for (i in 0 until byteData.length()) {
+                    data[i] = (byteData[i] as Int).toByte()
+                }
+                items[key] = Blob(contentType, data)
+            }
+        }
+        return items
     }
 
     @Throws(Exception::class)
@@ -146,29 +209,51 @@ object CollectionManager {
     @Throws(Exception::class)
     fun saveDocument(
         documentId: String,
-        document: Map<String, Any?>,
+        document: String,
+        blobs: String,
         concurrencyControl: ConcurrencyControl?,
         collectionName: String,
         scopeName: String,
         databaseName: String
-    ): Pair<String, Boolean?> {
+    ) : CollectionDocumentResult {
         val col = this.getCollection(collectionName, scopeName, databaseName)
+        val blobsMap = this.getBlobsFromString(blobs)
         col?.let { collection ->
             val mutableDocument =  if (documentId.isEmpty()) {
                 MutableDocument(document)
             } else {
                 MutableDocument(documentId, document)
             }
+            if (blobs.isNotEmpty()){
+                for ((key, value) in blobsMap) {
+                    mutableDocument.setBlob(key, value)
+                }
+            }
             concurrencyControl?.let {
                 val result = collection.save(mutableDocument, it)
                 if (result) {
-                    return Pair(mutableDocument.id, true)
+                    return CollectionDocumentResult(
+                        mutableDocument.id,
+                        mutableDocument.revisionID,
+                        mutableDocument.sequence,
+                        true
+                    )
                 } else {
-                    return Pair(mutableDocument.id, false)
+                    return CollectionDocumentResult(
+                        mutableDocument.id,
+                        mutableDocument.revisionID,
+                        mutableDocument.sequence,
+                        false
+                    )
                 }
             }
             collection.save(mutableDocument)
-            return Pair(mutableDocument.id, null)
+            return CollectionDocumentResult(
+                mutableDocument.id,
+                mutableDocument.revisionID,
+                mutableDocument.sequence,
+                null
+            )
         }
         throw Error("Error: Document not saved")
     }

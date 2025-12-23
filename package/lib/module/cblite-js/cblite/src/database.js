@@ -1,0 +1,589 @@
+"use strict";
+
+import { Document } from "./document.js";
+import { DatabaseLogging } from "./database-logging.js";
+import { EngineLocator } from "./engine-locator.js";
+import { Collection } from "./collection.js";
+import { Scope } from "./scope.js";
+import { Query } from "./query.js";
+import { LogDomain, LogLevel } from "./log-sinks-enums.js";
+
+// Re-export for backward compatibility with old API
+export { LogDomain, LogLevel };
+export let MaintenanceType = /*#__PURE__*/function (MaintenanceType) {
+  MaintenanceType[MaintenanceType["COMPACT"] = 0] = "COMPACT";
+  MaintenanceType[MaintenanceType["REINDEX"] = 1] = "REINDEX";
+  MaintenanceType[MaintenanceType["INTEGRITY_CHECK"] = 2] = "INTEGRITY_CHECK";
+  MaintenanceType[MaintenanceType["OPTIMIZE"] = 3] = "OPTIMIZE";
+  MaintenanceType[MaintenanceType["FULL_OPTIMIZE"] = 4] = "FULL_OPTIMIZE";
+  return MaintenanceType;
+}({});
+
+/**
+ * A Couchbase Lite database.
+ */
+export class Database {
+  _isClosed = false;
+  _engine = EngineLocator.getEngine(EngineLocator.key);
+  log = new DatabaseLogging(this);
+  constructor(
+  // eslint-disable-next-line 
+  _databaseName,
+  // eslint-disable-next-line 
+  _databaseConfig = null,
+  // eslint-disable-next-line
+  _databaseUniqueName = null) {
+    this._databaseName = _databaseName;
+    this._databaseConfig = _databaseConfig;
+    this._databaseUniqueName = _databaseUniqueName;
+  }
+  getEngine() {
+    return this._engine;
+  }
+
+  /**
+   * Open a database with the given name and configuration.
+   * Returns the unique internal name of the database which consists of the provided name and nanoId.
+   * The unique name is used to allow multiple instances of the same database to be opened at the same time.
+   * 
+   * @function
+   */
+  async open() {
+    const {
+      databaseUniqueName
+    } = await this._engine.database_Open({
+      name: this._databaseName,
+      config: this._databaseConfig
+    });
+    this._databaseUniqueName = databaseUniqueName;
+    this._isClosed = false;
+    return databaseUniqueName;
+  }
+
+  /**
+   * Changes the database’s encryption key, or removes
+   * encryption if the new key is nil.
+   *
+   * @function
+   */
+  async changeEncryptionKey(newKey) {
+    await this._engine.database_ChangeEncryptionKey({
+      name: this._databaseUniqueName,
+      newKey: newKey
+    });
+    this._databaseConfig.setEncryptionKey(newKey);
+  }
+
+  /**
+   * Close the database.  This will release all resources associated with the database.
+   *
+   * @function
+   */
+  close() {
+    const result = this._engine.database_Close({
+      name: this._databaseUniqueName
+    });
+    this._isClosed = true;
+    return result;
+  }
+
+  /**
+   * @deprecated compact is deprecated. Use performMaintenance instead.
+   *
+   * @function
+   */
+  compact() {
+    const args = {
+      name: this._databaseUniqueName,
+      maintenanceType: MaintenanceType.COMPACT
+    };
+    return this._engine.database_PerformMaintenance(args);
+  }
+
+  /**
+   * Performs database maintenance.
+   *
+   * @function
+   */
+  performMaintenance(maintenanceType) {
+    const args = {
+      name: this._databaseUniqueName,
+      maintenanceType: maintenanceType
+    };
+    return this._engine.database_PerformMaintenance(args);
+  }
+
+  /**
+   * Copy database
+   *
+   * @function
+   */
+  copy(path, name, config) {
+    return this._engine.database_Copy({
+      name: this._databaseUniqueName,
+      path: path,
+      newName: name,
+      config: config
+    });
+  }
+
+  /**
+   * Deletes a database.
+   *
+   * @function
+   */
+  deleteDatabase() {
+    if (this._isClosed) {
+      throw new Error('Cannot delete a closed database using this API.  Open the database first.');
+    }
+    return this._engine.database_Delete({
+      name: this._databaseUniqueName
+    });
+  }
+
+  /**
+   * Deletes a database.
+   *
+   * @function
+   */
+  static async deleteDatabase(databaseName, directory) {
+    const engine = EngineLocator.getEngine(EngineLocator.key);
+    const args = {
+      databaseName: databaseName,
+      directory: directory
+    };
+    await engine.database_DeleteWithPath(args);
+  }
+
+  /**
+   * Return the database's path.
+   *
+   * @function
+   */
+  async getPath() {
+    return (await this._engine.database_GetPath({
+      name: this._databaseUniqueName
+    })).path;
+  }
+
+  /**
+   * Checks whether a database of the given name exists in the given directory or not.
+   *
+   * @function
+   */
+  static async exists(name, directory) {
+    const engine = EngineLocator.getEngine(EngineLocator.key);
+    const args = {
+      databaseName: name,
+      directory: directory
+    };
+    const ret = await engine.database_Exists(args);
+    return ret.exists;
+  }
+
+  /**
+   * Return the database name
+   *
+   * @function
+   */
+  getName() {
+    return this._databaseName;
+  }
+
+  /**
+   * Return the database unique name.
+   * Unique name is generated by adding a nanoId to the database name.
+   * This is used to allow multiple instances of the same database to be opened at the same time.
+   *
+   * @function
+   */
+  getUniqueName() {
+    return this._databaseUniqueName;
+  }
+
+  /**
+   * Returns a READONLY config object which will throw a runtime exception when any setter methods are called.
+   *
+   * @function
+   */
+  getConfig() {
+    return this._databaseConfig;
+  }
+
+  /**
+   * TODO - Fix with QUEUE
+   */
+  inBatch(fn) {
+    fn();
+    return Promise.reject(null);
+  }
+  /**
+   * Set log level for the given log domain.
+   *
+   * @function
+   */
+  static setLogLevel(domain, level) {
+    const engine = EngineLocator.getEngine(EngineLocator.key);
+    return engine.database_SetLogLevel({
+      domain: domain,
+      logLevel: level
+    });
+  }
+
+  /**
+   * Set log level for the given log domain.
+   *
+   * @function
+   */
+  setLogLevel(domain, level) {
+    return this._engine.database_SetLogLevel({
+      domain: domain,
+      logLevel: level
+    });
+  }
+
+  /**
+   * The default scope name constant
+   *
+   * @property
+   */
+  static defaultScopeName = '_default';
+
+  /**
+   * The default collection name constant
+   *
+   * @property
+   */
+  static defaultCollectionName = '_default';
+
+  /**
+   * Get the default Scope.
+   *
+   * @function
+   */
+  async defaultScope() {
+    const scope = await this._engine.scope_GetDefault({
+      name: this._databaseUniqueName
+    });
+    return new Scope(scope.name, this);
+  }
+
+  /**
+   * Get a scope object by name. As the scope cannot exist by itself without having a collection, null value will be returned if there are no collections under the given scope’s name. Note: The default scope is exceptional, and it will always be returned.
+   *
+   * @function
+   */
+  async scope(scopeName) {
+    try {
+      const scope = await this._engine.scope_GetScope({
+        name: this._databaseUniqueName,
+        scopeName: scopeName
+      });
+      return new Scope(scope.name, this);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Get scope names that have at least one collection. Note: the default scope is exceptional as it will always be listed even though there are no collections under it.
+   *
+   * @function
+   */
+  async scopes() {
+    const results = await this._engine.scope_GetScopes({
+      name: this._databaseUniqueName
+    });
+    const scopes = [];
+    for (const scope of results.scopes) {
+      scopes.push(new Scope(scope.name, this));
+    }
+    return scopes;
+  }
+
+  /**
+   * Get the default Collection.
+   *
+   * @function
+   */
+  async defaultCollection() {
+    const col = await this._engine.collection_GetDefault({
+      name: this._databaseUniqueName
+    });
+    const scope = new Scope(col.scope.name, this);
+    return new Collection(col.name, scope, this);
+  }
+
+  /**
+   * Get a collection in the specified scope by name. If the collection does not exist, an error will be returned.
+   *
+   * @function
+   */
+  // eslint-disable-next-line 
+
+  // eslint-disable-next-line 
+
+  // eslint-disable-next-line 
+
+  // eslint-disable-next-line no-dupe-class-members
+  async collection(collectionName, scopeOrName) {
+    let col;
+    if (typeof scopeOrName === 'string') {
+      col = await this._engine.collection_GetCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionName,
+        scopeName: scopeOrName
+      });
+    } else if (scopeOrName instanceof Scope) {
+      col = await this._engine.collection_GetCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionName,
+        scopeName: scopeOrName.name
+      });
+    } else {
+      col = await this._engine.collection_GetCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionName,
+        scopeName: Database.defaultScopeName
+      });
+    }
+    const scope = new Scope(col.scope.name, this);
+    return new Collection(col.name, scope, this);
+  }
+
+  /**
+   * Get all collections in the specified scope.
+   *
+   * @function
+   */
+  // @ts-expect-error stupid overloading not working properly in IDE
+
+  // eslint-disable-next-line
+
+  // eslint-disable-next-line
+
+  // eslint-disable-next-line
+  async collections(scopeOrName) {
+    const collections = [];
+    let colResults;
+    if (typeof scopeOrName === 'string') {
+      colResults = await this._engine.collection_GetCollections({
+        name: this._databaseUniqueName,
+        scopeName: scopeOrName
+      });
+    } else if (scopeOrName instanceof Scope) {
+      colResults = await this._engine.collection_GetCollections({
+        name: this._databaseUniqueName,
+        scopeName: scopeOrName.name
+      });
+    } else {
+      colResults = await this._engine.collection_GetCollections({
+        name: this._databaseUniqueName,
+        scopeName: Database.defaultScopeName
+      });
+    }
+    for (const col of colResults.collections) {
+      const scope = new Scope(col.scope.name, this);
+      collections.push(new Collection(col.name, scope, this));
+    }
+    return collections;
+  }
+
+  /**
+   * Create a named collection in the specified scope. If the collection already exists, the existing collection will be returned.
+   *
+   * @function
+   */
+  // eslint-disable-next-line
+
+  // eslint-disable-next-line
+
+  // eslint-disable-next-line 
+
+  // eslint-disable-next-line
+  async createCollection(collectionName, scopeOrName) {
+    let col;
+    if (typeof scopeOrName === 'string') {
+      col = await this._engine.collection_CreateCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionName,
+        scopeName: scopeOrName
+      });
+    } else if (scopeOrName instanceof Scope) {
+      col = await this._engine.collection_CreateCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionName,
+        scopeName: scopeOrName.name
+      });
+    } else {
+      col = await this._engine.collection_CreateCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionName,
+        scopeName: Database.defaultScopeName
+      });
+    }
+    const scope = new Scope(col.scope.name, this);
+    return new Collection(col.name, scope, this);
+  }
+
+  /**
+   * Delete a collection by name in the specified scope. If the collection doesn’t exist, an error will be thrown
+   *
+   * @function
+   */
+  // eslint-disable-next-line 
+
+  // eslint-disable-next-line
+
+  // eslint-disable-next-line 
+  deleteCollection(collectionOrName, scopeName) {
+    if (typeof collectionOrName === 'string' && scopeName !== undefined) {
+      return this._engine.collection_DeleteCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionOrName,
+        scopeName: scopeName
+      });
+    } else if (collectionOrName instanceof Collection) {
+      return this._engine.collection_DeleteCollection({
+        name: this._databaseUniqueName,
+        collectionName: collectionOrName.name,
+        scopeName: collectionOrName.scope.name
+      });
+    } else {
+      throw new Error('Invalid arguments');
+    }
+  }
+
+  /**
+   * @deprecated deleteDocument is deprecated. Use Collection deleteDocument instead.
+   *
+   * @function
+   */
+  deleteDocument(document, concurrencyControl = null) {
+    const id = document.getId();
+    return this._engine.database_DeleteDocument({
+      name: this._databaseUniqueName,
+      docId: id,
+      concurrencyControl: concurrencyControl
+    });
+  }
+
+  /**
+   * @deprecated purgeDocument is deprecated. Use Collection purgeDocument instead.
+   *
+   * @function
+   */
+  purgeDocument(document) {
+    return this._engine.database_PurgeDocument({
+      name: this._databaseUniqueName,
+      docId: document.getId()
+    });
+  }
+
+  /**
+   * @deprecated getCount is deprecated. Use Collection getCount instead.
+   *
+   * @function
+   */
+  async getCount() {
+    const count = await this._engine.database_GetCount({
+      name: this._databaseUniqueName
+    });
+    return Promise.resolve(count.count);
+  }
+
+  /**
+   * @deprecated getDocument is deprecated. Use Collection getDocument instead.
+   *
+   * @function
+   */
+  async getDocument(id) {
+    const docJson = await this._engine.collection_GetDocument({
+      docId: id,
+      name: this._databaseUniqueName,
+      scopeName: "_default",
+      collectionName: "_default"
+    });
+    const collection = await this.defaultCollection();
+    // @ts-expect-error - _id is used in getId()
+    if (docJson && docJson._id) {
+      // @ts-expect-error - _data is used in getData()
+      const data = docJson._data;
+      // @ts-expect-error - _sequence is used in getSequence()
+      const sequence = docJson._sequence;
+      // @ts-expect-error _id exists in documents
+      const retId = docJson._id;
+      // @ts-expect-error - _revId is used in getRevisionID()
+      const revisionID = docJson._revId;
+      return Promise.resolve(new Document(retId, sequence, revisionID, collection, data));
+    } else {
+      return Promise.resolve(null);
+    }
+  }
+
+  /**
+   * @deprecated save is deprecated. Use Collection save instead.
+   *
+   * @function
+   */
+  async save(document, concurrencyControl = null) {
+    const ret = await this._engine.collection_Save({
+      id: document.getId(),
+      document: document.toJsonString(),
+      blobs: document.blobsToJsonString(),
+      concurrencyControl: concurrencyControl,
+      name: this._databaseUniqueName,
+      scopeName: "_default",
+      collectionName: "_default"
+    });
+    document.setId(ret._id);
+    document.setRevisionID(ret._revId);
+    document.setSequence(ret._sequence);
+  }
+
+  /**
+   * @deprecated createIndex is deprecated. Use Collection createIndex instead.
+   *
+   * @function
+   */
+  createIndex(indexName, index) {
+    return this._engine.database_CreateIndex({
+      name: this._databaseUniqueName,
+      indexName: indexName,
+      index: index.toJson()
+    });
+  }
+
+  /**
+   * @deprecated getIndexes is deprecated. Use Collection getIndexes instead.
+   *
+   * @function
+   */
+  async getIndexes() {
+    return (await this._engine.database_GetIndexes({
+      name: this._databaseUniqueName
+    })).indexes;
+  }
+
+  /**
+   * @deprecated deleteIndex is deprecated. Use Collection deleteIndex instead.
+   *
+   * @function
+   */
+  deleteIndex(indexName) {
+    return this._engine.database_DeleteIndex({
+      name: this._databaseUniqueName,
+      indexName: indexName
+    });
+  }
+
+  /**
+   * Creates a Query object from the given query string.
+   *
+   * @function
+   */
+  createQuery(queryString) {
+    return new Query(queryString, this);
+  }
+}
+//# sourceMappingURL=database.js.map

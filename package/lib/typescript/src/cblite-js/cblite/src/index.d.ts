@@ -5,6 +5,7 @@ export * from './blob';
 export * from './collation';
 export * from './collection';
 export * from './collection-config';
+export * from './collection-configuration';
 export * from './concurrency-control';
 export * from './couchbase-lite-exception';
 export * from './database-configuration';
@@ -40,4 +41,9 @@ export * from './session-authenticator';
 export * from './url-endpoint';
 export * from './value-index';
 export * from './variable-expression';
+export * from './url-endpoint-listener';
+export * from './log-sinks-enums';
+export * from './log-sinks';
+export type { ConsoleLogSinkConfig, FileLogSinkConfig, CustomLogSinkConfig } from './log-sinks-types';
+export { ListenerToken } from './listener-token';
 //# sourceMappingURL=index.d.ts.map

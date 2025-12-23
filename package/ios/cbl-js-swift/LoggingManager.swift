@@ -2,8 +2,6 @@
 //  LoggingManager.swift
 //  CbliteSwiftJsLib
 //
-//  Created by Aaron LaBeau on 09/04/24.
-//
 
 import Foundation
 import CouchbaseLiteSwift

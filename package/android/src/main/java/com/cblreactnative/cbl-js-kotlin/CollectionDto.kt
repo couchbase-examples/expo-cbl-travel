@@ -1,4 +1,4 @@
-package cbl.js.kotiln
+package cbl.js.kotlin
 
 data class CollectionDtoWrapper(val collection: CollectionDto)
 

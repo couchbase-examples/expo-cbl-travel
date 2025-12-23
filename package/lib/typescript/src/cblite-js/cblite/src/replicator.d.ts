@@ -2,6 +2,7 @@ import { ReplicatorConfiguration } from './replicator-configuration';
 import { ReplicatorChangeListener, ReplicatorDocumentChangeListener } from '../core-types';
 import { ReplicatorStatus } from './replicator-status';
 import { Collection } from './collection';
+import { ListenerToken } from './listener-token';
 export declare class Replicator {
     private _replicatorId;
     private status;
@@ -10,6 +11,8 @@ export declare class Replicator {
     private _statusChangeListener;
     private _didStartStatusChangeListener;
     private _documentChangeListener;
+    private _replicatorListenerTokensByUuid;
+    private _replicatorDocListenerTokensByUuid;
     /**
      * Initializes a replicator with the given configuration
      *
@@ -22,8 +25,14 @@ export declare class Replicator {
      * @function
      *
      */
-    addChangeListener(listener: ReplicatorChangeListener): Promise<string>;
-    addDocumentChangeListener(listener: ReplicatorDocumentChangeListener): Promise<string>;
+    addChangeListener(listener: ReplicatorChangeListener): Promise<ListenerToken>;
+    addDocumentChangeListener(listener: ReplicatorDocumentChangeListener): Promise<ListenerToken>;
+    /**
+   * Creates a new Replicator instance for database synchronization
+   * @param {ReplicatorConfiguration} config - The configuration for the replicator
+   * @returns {Promise<Replicator>} A Promise that resolves to a new Replicator instance
+   * @throws {Error} If the configuration is invalid or required parameters are missing
+   */
     static create(config: ReplicatorConfiguration): Promise<Replicator>;
     /**
      * Removes the replicator from the native engine and stops the replicator from running.
@@ -76,7 +85,7 @@ export declare class Replicator {
      *
      * @function
      */
-    removeChangeListener(token: string): Promise<void>;
+    removeChangeListener(token: string | ListenerToken): Promise<void>;
     /**
      * Starts the replicator with an option to reset the local checkpoint of the replicator. When the
      * local checkpoint is reset, the replicator will sync all changes since the beginning of time from

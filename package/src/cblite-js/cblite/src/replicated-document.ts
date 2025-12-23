@@ -1,16 +1,13 @@
 export enum ReplicatedDocumentFlag {
+     // eslint-disable-next-line
   DELETED = 'DELETED',
+     // eslint-disable-next-line
   ACCESS_REMOVED = 'ACCESS_REMOVED',
 }
 
 export class ReplicatedDocument {
-  constructor(
-    protected id: string,
-    protected flags: ReplicatedDocumentFlag[],
-    protected error: String = undefined,
-    protected scopeName: String,
-    protected collectionName: String
-  ) {}
+     // eslint-disable-next-line
+  constructor( protected id: string, protected flags: ReplicatedDocumentFlag[], protected error: string = undefined, protected scopeName: string, protected collectionName: string) {}
 
   getId(): string {
     return this.id;
@@ -20,7 +17,7 @@ export class ReplicatedDocument {
     return this.flags;
   }
 
-  getError(): String | undefined {
+  getError(): string | undefined {
     return this.error;
   }
 }
@@ -35,9 +32,7 @@ export interface ReplicatedDocumentRepresentation {
   };
 }
 
-export function isReplicatedDocumentRepresentation(
-  obj: any
-): obj is ReplicatedDocumentRepresentation {
+export function isReplicatedDocumentRepresentation(obj: any): obj is ReplicatedDocumentRepresentation { 
   try {
     const object: ReplicatedDocumentRepresentation = obj;
     object.flags.forEach((flag) => {
@@ -51,8 +46,8 @@ export function isReplicatedDocumentRepresentation(
     if (object.id === null) {
       throw 'document id cannot be null';
     }
-    if (object.error !== null) {
-      if (object.error.message === null) {
+    if (object.error) {
+      if (!object.error.message) {
         throw 'document error is incomplete';
       }
     }

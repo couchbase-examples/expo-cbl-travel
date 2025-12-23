@@ -2,18 +2,31 @@
 //  ReplicatorManager.swift
 //  CbliteSwiftJsLib
 //
-//  Created by Aaron LaBeau on 09/04/24.
-//
 
 import Foundation
 import CouchbaseLiteSwift
 
-enum ReplicatorError: Error {
+enum ReplicatorError: Error, LocalizedError {
     case configurationError(message: String)
     case unableToFindReplicator(replicatorId: String)
     case unknownError(message: String)
     case fatalError(message: String)
     case invalidState(message: String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .configurationError(let message):
+            return "Replicator configuration error: \(message)"
+        case .unableToFindReplicator(let replicatorId):
+            return "Unable to find replicator with ID: \(replicatorId)"
+        case .unknownError(let message):
+            return "Replicator error: \(message)"
+        case .fatalError(let message):
+            return "Fatal replicator error: \(message)"
+        case .invalidState(let message):
+            return "Invalid replicator state: \(message)"
+        }
+    }
 }
 
 public class ReplicatorManager {
@@ -40,13 +53,59 @@ public class ReplicatorManager {
 
     // MARK: Replicator Functions
 
-    public func replicator(_ replicatorConfig: [String: Any], collectionConfiguration: [CollectionConfigItem]) throws -> String {
-            let id = UUID().uuidString
-            let config = try ReplicatorHelper.replicatorConfigFromJson(replicatorConfig, collectionConfiguration: collectionConfiguration)
+    /// **[DUAL API SUPPORT]** Creates a replicator instance from configuration
+    ///
+    /// **What it does:**
+    /// - Receives JSON string with collection configuration (NEW or OLD format)
+    /// - Automatically detects which API format is being used
+    /// - Creates a new replicator with appropriate collection configuration
+    /// - Generates a unique ID for tracking the replicator
+    /// - Stores the replicator in the manager's registry
+    ///
+    /// **Parameters:**
+    /// - `replicatorConfig`: Dictionary containing all replicator settings
+    /// - `collectionConfigJson`: JSON string in NEW or OLD format
+    ///
+    /// **NEW API Format Example:**
+    /// ```json
+    /// "[{\"collection\":{\"name\":\"users\",\"scopeName\":\"_default\",\"databaseName\":\"mydb\"},\"config\":{\"channels\":[\"public\"]}}]"
+    /// ```
+    ///
+    /// **OLD API Format Example:**
+    /// ```json
+    /// "[{\"collections\":[{\"collection\":{\"name\":\"users\",\"scopeName\":\"_default\",\"databaseName\":\"mydb\"}}],\"config\":{\"channels\":[\"public\"]}}]"
+    /// ```
+    ///
+    /// **Returns:**
+    /// - `String`: Unique replicator ID for future operations
+    ///
+    /// **Example return value:**
+    /// ```swift
+    /// "A3B4C5D6-E7F8-4A9B-8C7D-1E2F3A4B5C6D"
+    /// ```
+    ///
+    /// **Throws:**
+    /// - `ReplicatorError`: If configuration is invalid or JSON cannot be parsed
+    /// - `CollectionError`: If any collection doesn't exist
+    public func replicator(
+        _ replicatorConfig: [String: Any],
+        collectionConfigJson: String
+    ) throws -> String {
+        let id = UUID().uuidString
         
+        let config = try ReplicatorHelper.replicatorConfigFromJson(
+            replicatorConfig,
+            collectionConfigJson: collectionConfigJson
+        )
+        
+        do {
             let replicator = Replicator(config: config)
             replicators[id] = replicator
+            
             return id
+        } catch {
+            throw error
+        }
     }
 
     public func start(_ replicatorId: String) throws {

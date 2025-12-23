@@ -1,5 +1,6 @@
 import { Authenticator } from './authenticator';
 import { Collection } from './collection';
+import { CollectionConfiguration } from './collection-configuration';
 import { CollectionConfig } from './collection-config';
 import { Endpoint } from './endpoint';
 export declare enum ReplicatorType {
@@ -8,7 +9,6 @@ export declare enum ReplicatorType {
     PULL = "PULL"
 }
 export declare class ReplicatorConfiguration {
-    private target;
     static readonly ReplicatorType: typeof ReplicatorType;
     static CBLReplicatorOptionCookies: string;
     static CBLReplicatorAuthOption: string;
@@ -32,7 +32,10 @@ export declare class ReplicatorConfiguration {
     private acceptOnlySelfSignedCerts;
     private autoPurgeEnabled;
     private acceptParentDomainCookies;
-    private readonly collections;
+    private readonly collectionConfigurations;
+    private target;
+    private collectionsMap;
+    private isNewApi;
     static defaultContinuous: boolean;
     static defaultEnableAutoPurge: boolean;
     static defaultSelfSignedCertificateOnly: boolean;
@@ -41,24 +44,150 @@ export declare class ReplicatorConfiguration {
     static defaultHeartbeat: number;
     static defaultMaxAttemptsSingleShot: number;
     static defaultMaxAttemptsWaitTime: number;
-    constructor(target: Endpoint);
     /**
-     * Add a collection used for the replication with an optional collection configuration. If the collection has
-     * been added before, the previous added and its configuration if specified will be replaced. If the config is omitted or a null or undefined configuration is specified, a default empty configuration will be applied.
+     * Creates a new ReplicatorConfiguration.
      *
-     * @function
+     * **DUAL API SUPPORT:**
+     *
+     * **NEW API (Recommended):**
+     * Pass collectionConfigurations array and endpoint at construction.
+     * Collections and endpoint are required, no mutation after construction.
+     *
+     * **OLD API (Deprecated but still supported):**
+     * Pass only endpoint at construction, then use add/removeCollections() methods.
+     *
+     * @param targetOrCollectionConfigs - Either CollectionConfiguration[] (NEW API) or Endpoint (OLD API)
+     * @param target - The endpoint (required for NEW API, omitted for OLD API)
+     *
+     * @throws Error if NEW API is used with empty array
+     *
+     * @example NEW API (Recommended):
+     * ```typescript
+     * const usersConfig = new CollectionConfiguration(usersCollection)
+     *   .setChannels(['public']);
+     * const config = new ReplicatorConfiguration(
+     *   [usersConfig],
+     *   new URLEndpoint('ws://localhost:4984/mydb')
+     * );
+     * ```
+     *
+     * @example OLD API (Deprecated):
+     * ```typescript
+     * const config = new ReplicatorConfiguration(
+     *   new URLEndpoint('ws://localhost:4984/mydb')
+     * );
+     * const collConfig = new CollectionConfig();
+     * collConfig.setChannels(['public']);
+     * config.addCollections([usersCollection], collConfig);
+     * ```
      */
-    addCollection(collection: Collection): void;
+    constructor(targetOrCollectionConfigs: CollectionConfiguration[] | Endpoint, target?: Endpoint);
     /**
-     * Add multiple collections used for the replication with an optional shared collection configuration.
-     * If any of the collections have been added before, the previously added collections and their
-     * configuration if specified will be replaced. Adding an empty collection array will be no-ops. if
-     * specified will be replaced. If a null or undefined configuration is specified, a default empty configuration will be
-     * applied.
+     * Gets the collection configurations for this replicator.
      *
-     * @function
+     * @returns Array of CollectionConfiguration objects
+     *
+     * @example
+     * ```typescript
+     * const configs = replConfig.getCollectionConfigurations();
+     * for (const config of configs) {
+     *   console.log(`Collection: ${config.getCollection().name}`);
+     *   console.log(`Channels: ${config.getChannels()}`);
+     * }
+     * ```
      */
-    addCollections(collections: Collection[], config?: CollectionConfig | null | undefined): void;
+    getCollectionConfigurations(): CollectionConfiguration[];
+    /**
+     * Gets all collections configured for replication.
+     *
+     * **Dual API Support:**
+     * - NEW API: Returns collections from CollectionConfiguration array
+     * - OLD API: Returns collections from collectionsMap
+     *
+     * @returns Array of Collection objects
+     *
+     * @example
+     * ```typescript
+     * const collections = replConfig.getCollections();
+     * console.log(`Replicating ${collections.length} collections`);
+     * ```
+     */
+    getCollections(): Collection[];
+    /**
+     * Gets the replication endpoint/target.
+     *
+     * @returns The Endpoint object
+     */
+    getTarget(): Endpoint;
+    /**
+     * **[OLD API]** Adds a collection to replicate with the given configuration.
+     *
+     * @param collection - The collection to add
+     * @param config - The replication configuration for this collection
+     *
+     * @deprecated Use NEW API constructor with CollectionConfiguration[] instead
+     *
+     * @throws Error if called on a NEW API instance
+     *
+     * @example
+     * ```typescript
+     * const config = new ReplicatorConfiguration(endpoint);
+     * const collConfig = new CollectionConfig();
+     * collConfig.setChannels(['public']);
+     * config.addCollection(usersCollection, collConfig);
+     * ```
+     */
+    addCollection(collection: Collection, config: CollectionConfig): void;
+    /**
+     * **[OLD API]** Adds multiple collections to replicate with the same configuration.
+     *
+     * @param collections - Array of collections to add
+     * @param config - The shared replication configuration
+     *
+     * @deprecated Use NEW API constructor with CollectionConfiguration[] instead
+     *
+     * @throws Error if called on a NEW API instance
+     *
+     * @example
+     * ```typescript
+     * const config = new ReplicatorConfiguration(endpoint);
+     * const collConfig = new CollectionConfig();
+     * collConfig.setChannels(['public']);
+     * config.addCollections([users, orders], collConfig);
+     * ```
+     */
+    addCollections(collections: Collection[], config: CollectionConfig): void;
+    /**
+     * **[OLD API]** Removes a collection from replication.
+     *
+     * @param collection - The collection to remove
+     *
+     * @deprecated Use NEW API constructor with CollectionConfiguration[] instead
+     *
+     * @throws Error if called on a NEW API instance
+     */
+    removeCollection(collection: Collection): void;
+    /**
+     * **[OLD API]** Removes multiple collections from replication.
+     *
+     * @param collections - Array of collections to remove
+     *
+     * @deprecated Use NEW API constructor with CollectionConfiguration[] instead
+     *
+     * @throws Error if called on a NEW API instance
+     */
+    removeCollections(collections: Collection[]): void;
+    /**
+     * **[OLD API]** Gets the configuration for a specific collection.
+     *
+     * @param collection - The collection to get config for
+     * @returns The CollectionConfig or undefined if not found
+     *
+     * @deprecated Use NEW API with CollectionConfiguration instead
+     *
+     * @throws Error if called on a NEW API instance
+     */
+    getCollectionConfig(collection: Collection): CollectionConfig | undefined;
     /**
      *  returns the setting used to specify the replicator to accept any and only self-signed certs. Any non-self-signed
      *  certs will be rejected to avoid accidentally using this mode with the non-self-signed certs in production.
@@ -111,19 +240,6 @@ export declare class ReplicatorConfiguration {
      * @function
      */
     getAuthenticator(): Authenticator;
-    /**
-     * returns collections used for the replication.
-     *
-     * @function
-     */
-    getCollections(): Collection[];
-    /**
-     * returns a copy of the collection’s config. If the config needs to be changed for the collection, the
-     * collection will need to be re-added with the updated config.
-     *
-     * @function
-     */
-    getCollectionConfig(collection: Collection): CollectionConfig | null;
     /**
      * returns the continuous flag indicating whether the replicator should stay
      * active indefinitely to replicate changed documents.
@@ -197,18 +313,6 @@ export declare class ReplicatorConfiguration {
      * @function
      */
     getReplicatorType(): ReplicatorType;
-    /**
-     * Remove a group of collections from the configuration. If the collection doesn’t exist, this operation will be no ops.
-     *
-     * @function
-     */
-    removeCollections(collections: Collection[]): void;
-    /**
-     * Remove the collection. If the collection doesn’t exist, this operation will be no ops.
-     *
-     * @function
-     */
-    removeCollection(collection: Collection): void;
     /**
      *  Specify the replicator to accept any and only self-signed certs. Any non-self-signed certs will be rejected
      *  to avoid accidentally using this mode with the non-self-signed certs in production.
@@ -336,7 +440,40 @@ export declare class ReplicatorConfiguration {
      * @function
      */
     setReplicatorType(replicatorType: ReplicatorType): void;
+    /**
+     * Creates a deep copy of this ReplicatorConfiguration.
+     *
+     * @returns A new ReplicatorConfiguration with the same settings
+     *
+     * @example
+     * ```typescript
+     * const originalConfig = new ReplicatorConfiguration([...], endpoint);
+     * const clonedConfig = originalConfig.clone();
+     * clonedConfig.setContinuous(true); // Doesn't affect original
+     * ```
+     */
+    clone(): ReplicatorConfiguration;
+    /**
+     * Converts this configuration to a JSON object for the native layer.
+     *
+     * **Dual API Support:**
+     * - NEW API: collectionConfig is an array of {collection, config} objects
+     * - OLD API: collectionConfig is an array of {collections, config} objects
+     *
+     * The native layer automatically detects which format is being used.
+     *
+     * @returns JSON object suitable for native bridge
+     *
+     * @internal
+     */
     toJson(): any;
-    private checkCollectionsScopeAndDatabase;
+    /**
+     * Validates that all collections are from the same database and scope.
+     *
+     * @returns true if all collections are compatible, false otherwise
+     *
+     * @private
+     */
+    private validateCollectionsScopeAndDatabase;
 }
 //# sourceMappingURL=replicator-configuration.d.ts.map

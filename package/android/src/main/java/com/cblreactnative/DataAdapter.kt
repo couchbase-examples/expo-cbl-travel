@@ -1,6 +1,6 @@
 package com.cblreactnative
 
-import cbl.js.kotiln.DatabaseManager
+import cbl.js.kotlin.DatabaseManager
 import com.couchbase.lite.MaintenanceType
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
@@ -14,6 +14,7 @@ import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import com.couchbase.lite.Collection as CBLCollection
 
 object DataAdapter {
@@ -52,43 +53,6 @@ object DataAdapter {
     }
     val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
     return format.format(date)
-  }
-
-  /**
-   * Converts a `Document` to a `WritableMap`.
-   *
-   * This function is used to adapt a Couchbase Lite `Document` to a `WritableMap` that can be
-   * used in React Native to send to Javascript via the Native Bridge. It iterates through the entries
-   * of the provided `Document` and converts any nested maps that represent blobs into their properties.
-   * A developer needing the blob would need to manually call the Collection `getBlobContent` method.
-   *
-   * @param document The `Document` to be converted. If the document is `null`, an empty `WritableMap` is returned.
-   * @return A `WritableMap` representation of the provided `Document`.
-   * @throws Exception If there is an error during the conversion.
-   */
-  @Throws(Exception::class)
-  fun documentToMap(document: Document?): WritableMap {
-    if (document == null) {
-      return Arguments.createMap()
-    }
-    val map = document.toMap()
-    //fix blob - only return properties, to get the content they will have to call getBlobContent
-    for (key in map.keys) {
-      val itemValue = map[key]
-      if (itemValue is Blob) {
-        document.getBlob(key)?.let { blob ->
-          val properties = blob.properties.toMap()
-          map[key] = properties
-        }
-      }
-    }
-    map.remove("sequence")
-    val resultsMap = Arguments.createMap()
-    val documentMap: WritableMap = Arguments.makeNativeMap(map)
-    resultsMap.putString("_id", document.id)
-    resultsMap.putDouble("_sequence", document.sequence.toDouble())
-    resultsMap.putMap("_data", documentMap)
-    return resultsMap
   }
 
   /**
@@ -159,18 +123,22 @@ object DataAdapter {
     indexProperties?.let { ip ->
       if (indexType == "value") {
         for (countValue in 0 until ip.size()) {
-          val arItems = indexProperties.getArray(countValue)
-          for (countArray in 0 until arItems.size()) {
-            val item = arItems.getString(countArray)
-            valueIndexProperties.add(ValueIndexItem.property(item))
+          ip.getArray(countValue)?.let { items ->
+            for (countArray in 0 until items.size()) {
+              items.getString(countArray)?.let { itemValue ->
+                valueIndexProperties.add(ValueIndexItem.property(itemValue))
+              }
+            }
           }
         }
       } else {
         for (countValue in 0 until ip.size()) {
-          val arItems = indexProperties.getArray(countValue)
-          for (countArray in 0 until arItems.size()) {
-            val item = arItems.getString(countArray)
-            fullTextIndexProperties.add(FullTextIndexItem.property(item))
+          ip.getArray(countValue)?.let { items ->
+            for (countArray in 0 until items.size()) {
+              items.getString(countArray)?.let { itemValue ->
+                fullTextIndexProperties.add(FullTextIndexItem.property(itemValue))
+              }
+            }
           }
         }
       }
@@ -334,36 +302,43 @@ object DataAdapter {
     val iterator = map.keySetIterator()
     var count = 0
     while (iterator.hasNextKey()) {
-      val key = iterator.nextKey()
-      val nestedMap = map.getMap(key)
-      val nestedType = nestedMap?.getString("type")
-      count += 1
-      when (nestedType) {
-        "int" -> queryParameters.setInt(key, nestedMap.getDouble("value").toInt())
-        "long" -> queryParameters.setLong(key, nestedMap.getDouble("value").toLong())
-        "float" -> queryParameters.setFloat(key, nestedMap.getDouble("value").toFloat())
-        "double" -> queryParameters.setDouble(key, nestedMap.getDouble("value"))
-        "boolean" -> queryParameters.setBoolean(key, nestedMap.getBoolean("value"))
-        "string" -> queryParameters.setString(key, nestedMap.getString("value"))
-        "date" -> {
-          val stringValue = map.getString("value")
-          stringValue?.let { strValue ->
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
-            val date = dateFormat.parse(strValue)
-            date?.let { d ->
-              queryParameters.setDate(key, d)
+        val key = iterator.nextKey()
+        val nestedMap = map.getMap(key)
+        val nestedType = nestedMap?.getString("type")
+        count += 1
+        when (nestedType) {
+            "int" -> queryParameters.setInt(key, nestedMap.getDouble("value").toInt())
+            "long" -> queryParameters.setLong(key, nestedMap.getDouble("value").toLong())
+            "float" -> queryParameters.setFloat(key, nestedMap.getDouble("value").toFloat())
+            "double" -> queryParameters.setDouble(key, nestedMap.getDouble("value"))
+            "boolean" -> queryParameters.setBoolean(key, nestedMap.getBoolean("value"))
+            "string" -> queryParameters.setString(key, nestedMap.getString("value"))
+            "date" -> {
+                val stringValue = nestedMap.getString("value")
+                stringValue?.let { strValue ->
+                    val date = parseIsoDate(strValue)
+                    date?.let { d ->
+                        queryParameters.setDate(key, d)
+                    }
+                }
             }
-          }
+            "value" -> {
+                val value = nestedMap.getDynamic("value")
+                when (value.type) {
+                    ReadableType.Boolean -> queryParameters.setBoolean(key, value.asBoolean())
+                    ReadableType.Number -> queryParameters.setDouble(key, value.asDouble())
+                    ReadableType.String -> queryParameters.setString(key, value.asString())
+                    else -> queryParameters.setValue(key, value)
+                }
+            }
+            else -> throw Exception("Error: Invalid parameter type: $nestedType")
         }
-
-        else -> throw Exception("Error: Invalid parameter type")
-      }
     }
     if (count == 0) {
-      return null
+        return null
     }
     return queryParameters
-  }
+}
 
   /**
    * Converts a `ReadableMap` to a `ReplicatorConfiguration` object.
@@ -531,30 +506,96 @@ object DataAdapter {
    */
   @Throws(Exception::class)
   fun toMap(readableMap: ReadableMap): Map<String, Any> {
-    val map = readableMap.toHashMap()
-    for ((key, value) in map) {
-      if (value is HashMap<*, *>) {
-        if (value.containsKey("_type") && value["_type"] == "blob") {
+    val resultMap = mutableMapOf<String, Any>()
+    
+    for ((key, value) in readableMap.toHashMap()) {
+      if (value != null) {
+        if (value is HashMap<*, *> && value["_type"] == "blob") {
           val nestedMap = value["data"] as HashMap<*, *>
           val contentType = nestedMap["contentType"] as String
           //value["data"] 'should be' an array of integers - need to convert it because React Native serializes it into
           //an the ArrayList<Double>
           val rawList = nestedMap["data"] as? ArrayList<*>
-          val doubleList = rawList?.filterIsInstance<Double>()?.takeIf { it.size == rawList.size } as? ArrayList<Double>
-          val intData = doubleList?.map{ it.toInt()}?.toIntArray()
-          if (intData == null) {
-            throw Exception("Error: Invalid blob data")
-          } else {
-            val data = ByteArray(intData.size)
-            for (i in intData.indices) {
-              data[i] = intData[i].toByte()
-            }
-            val blob = Blob(contentType, data)
-            map[key] = blob
-          }
+          val doubleList = rawList?.filterIsInstance<Double>()
+            ?.takeIf { it.size == rawList.size } as? ArrayList<Double>
+          val intData = doubleList?.map { it.toInt() }?.toIntArray()
+            ?: throw Exception("Error: Invalid blob data")
+          
+          val data = ByteArray(intData.size) { i -> intData[i].toByte() }
+          resultMap[key] = Blob(contentType, data)
+        } else {
+          resultMap[key] = value
         }
       }
     }
-    return map
+    
+    return resultMap
   }
+
+  private fun parseIsoDate(dateString: String): Date? {
+    val formats = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSSX",    // Handles Z or +hh:mm
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",  // Handles Z
+        "yyyy-MM-dd'T'HH:mm:ssX",        // No milliseconds, with zone
+        "yyyy-MM-dd'T'HH:mm:ss"          // No milliseconds, no zone
+    )
+    for (format in formats) {
+        try {
+            val sdf = SimpleDateFormat(format, Locale.getDefault())
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            return sdf.parse(dateString)
+        } catch (_: Exception) { }
+    }
+    return null
+}
+
+    /**
+     * Converts a `JSONObject` to a `Map<String, Any?>`.
+     *
+     * This function recursively converts a `JSONObject` into a Kotlin `Map<String, Any?>`.
+     * Nested `JSONObject` and `JSONArray` objects are also converted to `Map` and `List`, respectively.
+     *
+     * @param jsonObject The `JSONObject` to be converted.
+     * @return A `Map<String, Any?>` representation of the `JSONObject`.
+     */
+    fun jsonObjectToMap(jsonObject: JSONObject): Map<String, Any?> {
+        val map = mutableMapOf<String, Any?>()
+        val keys = jsonObject.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = jsonObject.get(key)
+            map[key] = when (value) {
+                is JSONObject -> jsonObjectToMap(value) 
+                is JSONArray -> jsonArrayToList(value) 
+                JSONObject.NULL -> null
+                else -> value
+            }
+        }
+        return map
+    }
+
+    /**
+     * Converts a `JSONArray` to a `List<Any?>`.
+     *
+     * This function recursively converts a `JSONArray` into a Kotlin `List<Any?>`.
+     * Nested `JSONObject` and `JSONArray` objects are also converted to `Map` and `List`, respectively.
+     *
+     * @param jsonArray The `JSONArray` to be converted.
+     * @return A `List<Any?>` representation of the `JSONArray`.
+     */
+    fun jsonArrayToList(jsonArray: JSONArray): List<Any?> {
+        val list = mutableListOf<Any?>()
+        for (i in 0 until jsonArray.length()) {
+            val value = jsonArray.get(i)
+            list.add(
+                when (value) {
+                    is JSONObject -> jsonObjectToMap(value) 
+                    is JSONArray -> jsonArrayToList(value) 
+                    JSONObject.NULL -> null
+                    else -> value
+                }
+            )
+        }
+        return list
+    }
 }

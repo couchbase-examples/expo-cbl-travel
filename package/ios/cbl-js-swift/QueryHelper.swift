@@ -2,8 +2,6 @@
 //  QueryHelper.swift
 //  CbliteSwiftJsLib
 //
-//  Created by Aaron LaBeau on 08/04/24.
-//
 
 import Foundation
 import CouchbaseLiteSwift

@@ -1,6 +1,8 @@
 import { Expression } from './expression';
 
 export class VariableExpression extends Expression {
+
+  // eslint-disable-next-line
   constructor(private name: string) {
     super();
   }

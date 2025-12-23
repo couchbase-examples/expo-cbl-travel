@@ -5,13 +5,13 @@ export declare enum ReplicatedDocumentFlag {
 export declare class ReplicatedDocument {
     protected id: string;
     protected flags: ReplicatedDocumentFlag[];
-    protected error: String;
-    protected scopeName: String;
-    protected collectionName: String;
-    constructor(id: string, flags: ReplicatedDocumentFlag[], error: String, scopeName: String, collectionName: String);
+    protected error: string;
+    protected scopeName: string;
+    protected collectionName: string;
+    constructor(id: string, flags: ReplicatedDocumentFlag[], error: string, scopeName: string, collectionName: string);
     getId(): string;
     getFlags(): ReplicatedDocumentFlag[];
-    getError(): String | undefined;
+    getError(): string | undefined;
 }
 export interface ReplicatedDocumentRepresentation {
     id: string;

@@ -1,27 +1,33 @@
-import { EmitterSubscription } from 'react-native';
-import { CollectionChangeListenerArgs, ICoreEngine, ListenerCallback, CollectionArgs, CollectionCreateIndexArgs, CollectionDeleteDocumentArgs, CollectionDeleteIndexArgs, CollectionDocumentExpirationArgs, CollectionDocumentGetBlobContentArgs, CollectionDocumentSaveResult, CollectionGetDocumentArgs, CollectionPurgeDocumentArgs, CollectionSaveArgs, CollectionsResult, DatabaseArgs, DatabaseCopyArgs, DatabaseCreateIndexArgs, DatabaseDeleteDocumentArgs, DatabaseDeleteIndexArgs, DatabaseEncryptionKeyArgs, DatabaseExistsArgs, DatabaseGetDocumentArgs, DatabaseOpenArgs, DatabasePerformMaintenanceArgs, DatabasePurgeDocumentArgs, DatabaseSaveArgs, DatabaseSetFileLoggingConfigArgs, DatabaseSetLogLevelArgs, DocumentChangeListenerArgs, DocumentExpirationResult, DocumentGetBlobContentArgs, DocumentResult, QueryChangeListenerArgs, QueryExecuteArgs, QueryRemoveChangeListenerArgs, ReplicationChangeListenerArgs, ReplicatorArgs, ReplicatorCollectionArgs, ReplicatorCreateArgs, ReplicatorDocumentPendingArgs, ScopeArgs, ScopesResult } from './cblite-js/cblite/core-types';
+import { EmitterSubscription, NativeEventEmitter } from 'react-native';
+import { CollectionChangeListenerArgs, ICoreEngine, ListenerCallback, CollectionArgs, CollectionCreateIndexArgs, CollectionDeleteDocumentArgs, CollectionDeleteIndexArgs, CollectionDocumentExpirationArgs, CollectionDocumentGetBlobContentArgs, CollectionDocumentSaveResult, CollectionGetDocumentArgs, CollectionPurgeDocumentArgs, CollectionSaveStringArgs, CollectionsResult, DatabaseArgs, DatabaseCopyArgs, DatabaseCreateIndexArgs, DatabaseDeleteDocumentArgs, DatabaseDeleteIndexArgs, DatabaseEncryptionKeyArgs, DatabaseExistsArgs, DatabaseGetDocumentArgs, DatabaseOpenArgs, DatabasePerformMaintenanceArgs, DatabasePurgeDocumentArgs, DatabaseSaveArgs, DatabaseSetFileLoggingConfigArgs, DatabaseSetLogLevelArgs, DocumentChangeListenerArgs, DocumentExpirationResult, DocumentResult, QueryChangeListenerArgs, QueryExecuteArgs, QueryRemoveChangeListenerArgs, ReplicationChangeListenerArgs, ReplicatorArgs, ReplicatorCollectionArgs, ReplicatorCreateArgs, ReplicatorDocumentPendingArgs, ScopeArgs, ScopesResult, DocumentGetBlobContentArgs, URLEndpointListenerCreateArgs, URLEndpointListenerArgs, URLEndpointListenerTLSIdentityArgs, URLEndpointListenerStatus } from './cblite-js/cblite/core-types';
 import { Collection } from './cblite-js/cblite/src/collection';
 import { Result } from './cblite-js/cblite/src/result';
 import { ReplicatorStatus } from './cblite-js/cblite/src/replicator-status';
 import { Scope } from './cblite-js/cblite/src/scope';
+import type { LogSinksSetConsoleArgs, LogSinksSetFileArgs, LogSinksSetCustomArgs } from './cblite-js/cblite/src/log-sinks-types';
 export declare class CblReactNativeEngine implements ICoreEngine {
     _defaultCollectionName: string;
     _defaultScopeName: string;
+    debugConsole: boolean;
+    platform: "ios" | "android" | "windows" | "macos" | "web";
     _eventReplicatorStatusChange: string;
     _eventReplicatorDocumentChange: string;
     _eventCollectionChange: string;
     _eventCollectionDocumentChange: string;
     _eventQueryChange: string;
-    private _isReplicatorStatusChangeEventSetup;
     private _replicatorChangeListeners;
-    private _replicatorStatusChangeSubscription;
+    private _emitterSubscriptions;
     private _replicatorDocumentChangeListeners;
-    private _replicatorDocumentChangeStopListener;
     private _isReplicatorDocumentChangeEventSetup;
+    private _collectionChangeListeners;
+    private _collectionDocumentChangeListeners;
+    private _queryChangeListeners;
+    private customLogCallbacksMap;
     private static readonly LINKING_ERROR;
     CblReactNative: any;
-    private _eventEmitter;
-    constructor();
+    _eventEmitter: NativeEventEmitter;
+    constructor(customEventEmitter?: NativeEventEmitter);
+    private debugLog;
     startListeningEvents: (event: string, callback: any) => EmitterSubscription;
     collection_AddChangeListener(args: CollectionChangeListenerArgs, lcb: ListenerCallback): Promise<void>;
     collection_AddDocumentChangeListener(args: DocumentChangeListenerArgs, lcb: ListenerCallback): Promise<void>;
@@ -38,6 +44,9 @@ export declare class CblReactNativeEngine implements ICoreEngine {
     collection_GetCount(args: CollectionArgs): Promise<{
         count: number;
     }>;
+    collection_GetFullName(args: CollectionArgs): Promise<{
+        fullName: string;
+    }>;
     collection_GetDefault(args: DatabaseArgs): Promise<Collection>;
     collection_GetDocument(args: CollectionGetDocumentArgs): Promise<DocumentResult>;
     collection_GetDocumentExpiration(args: CollectionGetDocumentArgs): Promise<DocumentExpirationResult>;
@@ -47,7 +56,14 @@ export declare class CblReactNativeEngine implements ICoreEngine {
     collection_PurgeDocument(args: CollectionPurgeDocumentArgs): Promise<void>;
     collection_RemoveChangeListener(args: CollectionChangeListenerArgs): Promise<void>;
     collection_RemoveDocumentChangeListener(args: CollectionChangeListenerArgs): Promise<void>;
-    collection_Save(args: CollectionSaveArgs): Promise<CollectionDocumentSaveResult>;
+    /**
+     * Generic method to remove any listener by its UUID token.
+     * Calls the native listenerToken_Remove bridge method.
+     */
+    listenerToken_Remove(args: {
+        changeListenerToken: string;
+    }): Promise<void>;
+    collection_Save(args: CollectionSaveStringArgs): Promise<CollectionDocumentSaveResult>;
     collection_SetDocumentExpiration(args: CollectionDocumentExpirationArgs): Promise<void>;
     database_ChangeEncryptionKey(args: DatabaseEncryptionKeyArgs): Promise<void>;
     database_Close(args: DatabaseArgs): Promise<void>;
@@ -88,7 +104,9 @@ export declare class CblReactNativeEngine implements ICoreEngine {
     database_GetPath(args: DatabaseArgs): Promise<{
         path: string;
     }>;
-    database_Open(args: DatabaseOpenArgs): Promise<void>;
+    database_Open(args: DatabaseOpenArgs): Promise<{
+        databaseUniqueName: string;
+    }>;
     database_PerformMaintenance(args: DatabasePerformMaintenanceArgs): Promise<void>;
     /**
      * @deprecated This will be removed in future versions. Use collection_PurgeDocument instead.
@@ -140,6 +158,28 @@ export declare class CblReactNativeEngine implements ICoreEngine {
     scope_GetDefault(args: DatabaseArgs): Promise<Scope>;
     scope_GetScope(args: ScopeArgs): Promise<Scope>;
     scope_GetScopes(args: DatabaseArgs): Promise<ScopesResult>;
+    URLEndpointListener_createListener(args: URLEndpointListenerCreateArgs): Promise<{
+        listenerId: string;
+    }>;
+    URLEndpointListener_startListener(args: URLEndpointListenerArgs): Promise<void>;
+    URLEndpointListener_stopListener(args: URLEndpointListenerArgs): Promise<void>;
+    URLEndpointListener_getStatus(args: URLEndpointListenerArgs): Promise<URLEndpointListenerStatus>;
+    URLEndpointListener_deleteIdentity(args: URLEndpointListenerTLSIdentityArgs): Promise<void>;
     getUUID(): string;
+    /**
+     * Sets or disables the console log sink
+     * @param args Arguments containing level and domains, or null to disable
+     */
+    logsinks_SetConsole(args: LogSinksSetConsoleArgs): Promise<void>;
+    /**
+     * Sets or disables the file log sink
+     * @param args Arguments containing level and config, or null to disable
+     */
+    logsinks_SetFile(args: LogSinksSetFileArgs): Promise<void>;
+    /**
+     * Sets or disables the custom log sink
+     * @param args Arguments containing level, domains, and token, or null to disable
+     */
+    logsinks_SetCustom(args: LogSinksSetCustomArgs): Promise<void>;
 }
 //# sourceMappingURL=CblReactNativeEngine.d.ts.map

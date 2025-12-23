@@ -1,27 +1,11 @@
 //
 //  QueryHelper.swift
 //  CbliteSwiftJsLib
-//
-//  Created by Aaron LaBeau on 07/04/24.
 
 import Foundation
 import CouchbaseLiteSwift
 
 public struct MapHelper {
-
-    public static func documentToMap(_ document: Document) ->
-    [String: Any] {
-        var docMap = [String: Any]()
-        let documentAsMap = document.toDictionary()
-        for (key, value) in documentAsMap {
-            if let blobEntry = value as? Blob {
-                docMap[key] = blobEntry.properties
-            } else {
-                docMap[key] = value
-            }
-        }
-        return docMap
-    }
 
     public static func resultToMap(_ result: Result,
                                    databaseName: String) ->

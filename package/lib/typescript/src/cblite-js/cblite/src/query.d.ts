@@ -2,6 +2,7 @@ import { QueryChangeListener } from '../core-types';
 import { Database } from './database';
 import { ResultSet } from './result';
 import { Parameters } from './parameters';
+import { ListenerToken } from './listener-token';
 /**
  * A database query. A Query instance can be constructed by calling
  * execute or explain.
@@ -13,13 +14,14 @@ export declare class Query {
     private _engine;
     private _changeListener;
     private _didStartQueryListener;
+    private _queryListenerTokensByUuid;
     constructor(queryString: string, database: Database);
     /**
      * Adds a query change listener.
      *
      * @function
      */
-    addChangeListener(listener: QueryChangeListener): Promise<string>;
+    addChangeListener(listener: QueryChangeListener): Promise<ListenerToken>;
     /**
      * Adds a Parameter object used for setting values to the query parameters defined in the query. All parameters defined in the query must be given values before running the query, or the query will fail.
      *
@@ -66,8 +68,19 @@ export declare class Query {
      *
      * @function
      */
-    removeChangeListener(token: string): Promise<void>;
+    removeChangeListener(token: string | ListenerToken): Promise<void>;
     setDatabase(database: Database): void;
+    /**
+     * Returns the query string used to create this Query instance
+     * @returns {string} The original query string
+     * @example
+     * const query = new Query("SELECT * FROM users WHERE age >= $minAge", database);
+     * console.log(query.toString());
+     * // Returns: "SELECT * FROM users WHERE age >= $minAge"
+     *
+     * // Useful for debugging or logging query definitions
+     * console.log(`Current query: ${query}`); // Automatically calls toString()
+     */
     toString(): string;
 }
 //# sourceMappingURL=query.d.ts.map

@@ -1,8 +1,6 @@
 export class ReplicatorProgress {
-  constructor(
-    private completed: number,
-    private total: number
-  ) {}
+  // eslint-disable-next-line
+  constructor(private completed: number, private total: number) {}
 
   getCompleted() {
     return this.completed;

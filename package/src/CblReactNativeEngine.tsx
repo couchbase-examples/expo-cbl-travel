@@ -17,7 +17,7 @@ import {
   CollectionDocumentSaveResult,
   CollectionGetDocumentArgs,
   CollectionPurgeDocumentArgs,
-  CollectionSaveArgs,
+  CollectionSaveStringArgs,
   CollectionsResult,
   DatabaseArgs,
   DatabaseCopyArgs,
@@ -35,7 +35,6 @@ import {
   DatabaseSetLogLevelArgs,
   DocumentChangeListenerArgs,
   DocumentExpirationResult,
-  DocumentGetBlobContentArgs,
   DocumentResult,
   QueryChangeListenerArgs,
   QueryExecuteArgs,
@@ -47,6 +46,11 @@ import {
   ReplicatorDocumentPendingArgs,
   ScopeArgs,
   ScopesResult,
+  DocumentGetBlobContentArgs,
+  URLEndpointListenerCreateArgs,
+  URLEndpointListenerArgs,
+  URLEndpointListenerTLSIdentityArgs,
+  URLEndpointListenerStatus,
 } from './cblite-js/cblite/core-types';
 
 import { EngineLocator } from './cblite-js/cblite/src/engine-locator';
@@ -55,13 +59,23 @@ import { Result } from './cblite-js/cblite/src/result';
 import { ReplicatorStatus } from './cblite-js/cblite/src/replicator-status';
 import { Scope } from './cblite-js/cblite/src/scope';
 
+import { LogLevel, LogDomain } from './cblite-js/cblite/src/log-sinks-enums';
+import type {
+  LogSinksSetConsoleArgs,
+  LogSinksSetFileArgs,
+  LogSinksSetCustomArgs,
+} from './cblite-js/cblite/src/log-sinks-types';
+
 import uuid from 'react-native-uuid';
 
 export class CblReactNativeEngine implements ICoreEngine {
   _defaultCollectionName = '_default';
   _defaultScopeName = '_default';
+  debugConsole = false;
+  platform = Platform.OS;
 
   //event name mapping for the native side of the module
+
   _eventReplicatorStatusChange = 'replicatorStatusChange';
   _eventReplicatorDocumentChange = 'replicatorDocumentChange';
   _eventCollectionChange = 'collectionChange';
@@ -69,16 +83,26 @@ export class CblReactNativeEngine implements ICoreEngine {
   _eventQueryChange = 'queryChange';
 
   //used to listen to replicator change events for both status and document changes
-  private _isReplicatorStatusChangeEventSetup: boolean = false;
   private _replicatorChangeListeners: Map<string, ListenerCallback> = new Map();
-  private _replicatorStatusChangeSubscription: EmitterSubscription | undefined =
-    undefined;
+  private _emitterSubscriptions: Map<string, EmitterSubscription> = new Map();
 
   private _replicatorDocumentChangeListeners: Map<string, ListenerCallback> =
     new Map();
-  private _replicatorDocumentChangeStopListener: () => void | undefined =
-    undefined;
   private _isReplicatorDocumentChangeEventSetup: boolean = false;
+
+  private _collectionChangeListeners: Map<string, ListenerCallback> = new Map();
+  private _collectionDocumentChangeListeners: Map<string, ListenerCallback> =
+    new Map();
+
+  private _queryChangeListeners: Map<string, ListenerCallback> = new Map();
+
+  // Storage for custom log sink callbacks, users can have multiple custom logs
+  // Key : unique token
+  // value: callback function
+  private customLogCallbacksMap: Map<
+    string,
+    (level: LogLevel, domain: LogDomain, message: string) => void
+  > = new Map();
 
   private static readonly LINKING_ERROR =
     `The package 'cbl-reactnative' doesn't seem to be linked. Make sure: \n\n` +
@@ -97,20 +121,56 @@ export class CblReactNativeEngine implements ICoreEngine {
         }
       );
 
-  private _eventEmitter = new NativeEventEmitter(this.CblReactNative);
+  _eventEmitter: NativeEventEmitter;
 
-  constructor() {
+  constructor(customEventEmitter?: NativeEventEmitter) {
     EngineLocator.registerEngine(EngineLocator.key, this);
+
+    if (customEventEmitter) {
+      this.debugLog('Using provided custom event emitter');
+      this._eventEmitter = customEventEmitter;
+    } else {
+      this._eventEmitter = new NativeEventEmitter(this.CblReactNative);
+    }
+
+    // Always add the customLogMessage listener regardless of emitter source
+    this._eventEmitter.addListener(
+      'customLogMessage',
+      (data: {
+        token: string;
+        level: LogLevel;
+        domain: LogDomain;
+        message: string;
+      }) => {
+        const callback = this.customLogCallbacksMap.get(data.token);
+
+        if (callback) {
+          callback(
+            data.level as LogLevel,
+            data.domain as LogDomain,
+            data.message
+          );
+        }
+      }
+    );
+  }
+
+  //private logging function
+  private debugLog(message: string) {
+    if (this.debugConsole) {
+      console.log(message);
+    }
   }
 
   //startListeningEvents - used to listen to events from the native side of the module.  Implements Native change listeners for Couchbase Lite
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   startListeningEvents = (event: string, callback: any) => {
     console.log(`::DEBUG:: Registering listener for event: ${event}`);
     return this._eventEmitter.addListener(
       event,
       (data) => {
-        console.log(
-          `Received event: ${event} with data: ${JSON.stringify(data)}`
+        this.debugLog(
+          `::DEBUG:: Received event: ${event} with data: ${JSON.stringify(data)}`
         );
         callback(data);
       },
@@ -122,14 +182,93 @@ export class CblReactNativeEngine implements ICoreEngine {
     args: CollectionChangeListenerArgs,
     lcb: ListenerCallback
   ): Promise<void> {
-    return Promise.resolve(undefined);
+    return new Promise((resolve, reject) => {
+      const token = args.changeListenerToken;
+
+      if (this._collectionChangeListeners.has(token)) {
+        reject(new Error('Change listener token already exists'));
+        return;
+      }
+
+      const subscription = this.startListeningEvents(
+        this._eventCollectionChange,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (results: any) => {
+          if (results.token === token) {
+            this.debugLog(
+              `::DEBUG:: Received collection change event for token: ${token}`
+            );
+            lcb(results);
+          }
+        }
+      );
+
+      this._emitterSubscriptions.set(token, subscription);
+      this._collectionChangeListeners.set(token, lcb);
+
+      this.CblReactNative.collection_AddChangeListener(
+        token,
+        args.collectionName,
+        args.name,
+        args.scopeName
+      ).then(
+        () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error: any) => {
+          this._emitterSubscriptions.delete(token);
+          this._collectionChangeListeners.delete(token);
+          subscription.remove();
+          reject(error);
+        }
+      );
+    });
   }
 
   collection_AddDocumentChangeListener(
     args: DocumentChangeListenerArgs,
     lcb: ListenerCallback
   ): Promise<void> {
-    return Promise.resolve(undefined);
+    return new Promise((resolve, reject) => {
+      const token = args.changeListenerToken;
+
+      if (this._collectionDocumentChangeListeners.has(token)) {
+        reject(new Error('Document change listener token already exists'));
+        return;
+      }
+
+      const subscription = this.startListeningEvents(
+        this._eventCollectionDocumentChange,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (results: any) => {
+          if (results.token === token) {
+            this.debugLog(
+              `::DEBUG:: Received document change event for token: ${token}`
+            );
+            lcb(results);
+          }
+        }
+      );
+
+      this._emitterSubscriptions.set(token, subscription);
+      this._collectionDocumentChangeListeners.set(token, lcb);
+
+      this.CblReactNative.collection_AddDocumentChangeListener(
+        token,
+        args.documentId,
+        args.collectionName,
+        args.name,
+        args.scopeName
+      ).then(
+        () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error: any) => {
+          this._emitterSubscriptions.delete(token);
+          this._collectionDocumentChangeListeners.delete(token);
+          subscription.remove();
+          reject(error);
+        }
+      );
+    });
   }
 
   collection_CreateCollection(args: CollectionArgs): Promise<Collection> {
@@ -142,6 +281,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: Collection) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -161,6 +301,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -178,6 +319,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -190,7 +332,9 @@ export class CblReactNativeEngine implements ICoreEngine {
       args.concurrencyControl !== null
         ? (args.concurrencyControl as number)
         : -9999;
-
+    this.debugLog(
+      `::DEBUG:: collection_DeleteDocument: ${args.docId} ${args.name} ${args.scopeName} ${args.collectionName} ${concurrencyControl}`
+    );
     return new Promise((resolve, reject) => {
       this.CblReactNative.collection_DeleteDocument(
         args.docId,
@@ -200,9 +344,12 @@ export class CblReactNativeEngine implements ICoreEngine {
         concurrencyControl
       ).then(
         () => {
+          this.debugLog(`::DEBUG:: collection_DeleteDocument completed`);
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          this.debugLog(`::DEBUG:: collection_DeleteDocument Error: ${error}`);
           reject(error);
         }
       );
@@ -220,6 +367,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -241,6 +389,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (resultsData: { data: Iterable<number> }) => {
           resolve({ data: new Uint8Array(resultsData.data).buffer });
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -258,6 +407,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: Collection) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -274,6 +424,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: CollectionsResult) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -282,6 +433,9 @@ export class CblReactNativeEngine implements ICoreEngine {
   }
 
   collection_GetCount(args: CollectionArgs): Promise<{ count: number }> {
+    this.debugLog(
+      `::DEBUG:: collection_GetCount: ${args.collectionName} ${args.name} ${args.scopeName}`
+    );
     return new Promise((resolve, reject) => {
       this.CblReactNative.collection_GetCount(
         args.collectionName,
@@ -289,13 +443,43 @@ export class CblReactNativeEngine implements ICoreEngine {
         args.scopeName
       ).then(
         (result: { count: number }) => {
+          this.debugLog(
+            `::DEBUG:: collection_GetCount completed with result: ${JSON.stringify(result)}`
+          );
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          this.debugLog(`::DEBUG:: collection_GetCount Error: ${error}`);
           reject(error);
         }
       );
     });
+  }
+
+  async collection_GetFullName(
+    args: CollectionArgs
+  ): Promise<{ fullName: string }> {
+    this.debugLog(
+      `::DEBUG:: collection_GetFullName: ${args.collectionName} ${args.name} ${args.scopeName}`
+    );
+
+    try {
+      const result = await this.CblReactNative.collection_GetFullName(
+        args.collectionName,
+        args.name,
+        args.scopeName
+      );
+
+      this.debugLog(
+        `::DEBUG:: collection_GetFullName completed with result: ${JSON.stringify(result)}`
+      );
+
+      return result;
+    } catch (error: unknown) {
+      this.debugLog(`::DEBUG:: collection_GetFullName Error: ${error}`);
+      throw error; // Re-throw to maintain error propagation
+    }
   }
 
   collection_GetDefault(args: DatabaseArgs): Promise<Collection> {
@@ -304,6 +488,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: Collection) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -314,6 +499,10 @@ export class CblReactNativeEngine implements ICoreEngine {
   collection_GetDocument(
     args: CollectionGetDocumentArgs
   ): Promise<DocumentResult> {
+    this.debugLog(
+      `::DEBUG:: collection_GetDocument: ${args.docId} ${args.name} ${args.scopeName} ${args.collectionName}`
+    );
+
     return new Promise((resolve, reject) => {
       this.CblReactNative.collection_GetDocument(
         args.docId,
@@ -322,9 +511,14 @@ export class CblReactNativeEngine implements ICoreEngine {
         args.collectionName
       ).then(
         (dr: DocumentResult) => {
+          this.debugLog(
+            `::DEBUG:: collection_GetDocument completed with result: ${JSON.stringify(dr)}`
+          );
           resolve(dr);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          this.debugLog(`::DEBUG:: collection_GetDocument Error: ${error}`);
           reject(error);
         }
       );
@@ -344,6 +538,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (der: DocumentExpirationResult) => {
           resolve(der);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -361,6 +556,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (items: { indexes: string[] }) => {
           resolve(items);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -379,6 +575,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -387,27 +584,124 @@ export class CblReactNativeEngine implements ICoreEngine {
   }
 
   collection_RemoveChangeListener(
+    // eslint-disable-next-line
     args: CollectionChangeListenerArgs
   ): Promise<void> {
-    return Promise.resolve(undefined);
+    return new Promise((resolve, reject) => {
+      const token = args.changeListenerToken;
+
+      // Remove the subscription
+      if (this._emitterSubscriptions.has(token)) {
+        this._emitterSubscriptions.get(token)?.remove();
+        this._emitterSubscriptions.delete(token);
+      }
+
+      // Remove the listener from the collection listeners map
+      if (this._collectionChangeListeners.has(token)) {
+        this._collectionChangeListeners.delete(token);
+      } else {
+        reject(new Error(`No listener found with token: ${token}`));
+        return;
+      }
+
+      // Remove the listener from the native side
+      this.CblReactNative.collection_RemoveChangeListener(token).then(
+        () => {
+          this.debugLog(
+            `::DEBUG:: collection_RemoveChangeListener completed for token: ${token}`
+          );
+          resolve();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error: any) => {
+          this.debugLog(
+            `::DEBUG:: collection_RemoveChangeListener Error: ${error}`
+          );
+          reject(error);
+        }
+      );
+    });
   }
 
   collection_RemoveDocumentChangeListener(
+    // eslint-disable-next-line
     args: CollectionChangeListenerArgs
   ): Promise<void> {
-    return Promise.resolve(undefined);
+    return new Promise((resolve, reject) => {
+      const token = args.changeListenerToken;
+
+      // Remove the subscription
+      if (this._emitterSubscriptions.has(token)) {
+        this._emitterSubscriptions.get(token)?.remove();
+        this._emitterSubscriptions.delete(token);
+      }
+
+      // Remove the listener from the document listeners map
+      if (this._collectionDocumentChangeListeners.has(token)) {
+        this._collectionDocumentChangeListeners.delete(token);
+      } else {
+        reject(new Error(`No document listener found with token: ${token}`));
+        return;
+      }
+
+      // Remove the listener from the native side
+      this.CblReactNative.collection_RemoveChangeListener(token).then(
+        () => {
+          this.debugLog(
+            `::DEBUG:: collection_RemoveDocumentChangeListener completed for token: ${token}`
+          );
+          resolve();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error: any) => {
+          this.debugLog(
+            `::DEBUG:: collection_RemoveDocumentChangeListener Error: ${error}`
+          );
+          reject(error);
+        }
+      );
+    });
+  }
+
+  /**
+   * Generic method to remove any listener by its UUID token.
+   * Calls the native listenerToken_Remove bridge method.
+   */
+  listenerToken_Remove(args: { changeListenerToken: string }): Promise<void> {
+    return this.CblReactNative.listenerToken_Remove(
+      args.changeListenerToken
+    ).then(
+      () => {
+        this.debugLog(
+          `::DEBUG:: Successfully removed listener with token ${args.changeListenerToken}`
+        );
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (error: any) => {
+        this.debugLog(
+          `::ERROR:: Failed to remove listener with token ${args.changeListenerToken}: ${error}`
+        );
+        throw error;
+      }
+    );
   }
 
   collection_Save(
-    args: CollectionSaveArgs
+    args: CollectionSaveStringArgs
   ): Promise<CollectionDocumentSaveResult> {
+    //deal with react native passing nulls
     const concurrencyControl =
       args.concurrencyControl !== null
         ? (args.concurrencyControl as number)
         : -9999;
+    this.debugLog(
+      `::DEBUG:: collection_Save: ${args.document} ${args.blobs} ${args.id} ${args.name} ${args.scopeName} ${args.collectionName} ${concurrencyControl}`
+    );
+
     return new Promise((resolve, reject) => {
       this.CblReactNative.collection_Save(
         args.document,
+        args.blobs,
         args.id,
         args.name,
         args.scopeName,
@@ -415,9 +709,16 @@ export class CblReactNativeEngine implements ICoreEngine {
         concurrencyControl
       ).then(
         (resultsData: CollectionDocumentSaveResult) => {
+          if (this.debugConsole) {
+            console.log(
+              `::DEBUG:: collection_Save completed with result: ${JSON.stringify(resultsData)}`
+            );
+          }
           resolve(resultsData);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          console.log(`::DEBUG:: collection_Save Error: ${error}`);
           reject(error);
         }
       );
@@ -438,6 +739,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -452,6 +754,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         args.name
       ).then(
         () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -460,10 +763,16 @@ export class CblReactNativeEngine implements ICoreEngine {
   }
 
   database_Close(args: DatabaseArgs): Promise<void> {
+    this.debugLog(`::DEBUG:: database_Close: ${args.name}`);
     return new Promise((resolve, reject) => {
       this.CblReactNative.database_Close(args.name).then(
-        () => resolve(),
+        () => {
+          this.debugLog(`::DEBUG:: database_Close completed`);
+          resolve();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          this.debugLog(`::DEBUG:: database_Close Error: ${error}`);
           reject(error);
         }
       );
@@ -479,6 +788,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         args.config.encryptionKey
       ).then(
         () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -501,10 +811,18 @@ export class CblReactNativeEngine implements ICoreEngine {
   }
 
   database_Delete(args: DatabaseArgs): Promise<void> {
+    if (this.debugConsole) {
+      console.log(`::DEBUG:: database_Delete: ${args.name}`);
+    }
     return new Promise((resolve, reject) => {
       this.CblReactNative.database_Delete(args.name).then(
-        () => resolve(),
+        () => {
+          this.debugLog(`::DEBUG:: database_Delete completed`);
+          resolve();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          console.log(`::DEBUG:: database_Delete Error: ${error}`);
           reject(error);
         }
       );
@@ -512,13 +830,21 @@ export class CblReactNativeEngine implements ICoreEngine {
   }
 
   database_DeleteWithPath(args: DatabaseExistsArgs): Promise<void> {
+    this.debugLog(
+      `::DEBUG:: database_DeleteWithPath: ${args.directory} ${args.databaseName}`
+    );
     return new Promise((resolve, reject) => {
       this.CblReactNative.database_DeleteWithPath(
         args.directory,
         args.databaseName
       ).then(
-        () => resolve(),
+        () => {
+          this.debugLog(`::DEBUG:: database_DeleteWithPath completed`);
+          resolve();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          this.debugLog(`::DEBUG:: database_DeleteWithPath Error: ${error}`);
           reject(error);
         }
       );
@@ -536,6 +862,9 @@ export class CblReactNativeEngine implements ICoreEngine {
       docId: args.docId,
       concurrencyControl: args.concurrencyControl,
     };
+    this.debugLog(
+      `::DEBUG:: database_DeleteDocument: ${args.docId} ${args.name} ${this._defaultScopeName} ${this._defaultCollectionName} ${args.concurrencyControl}`
+    );
     return this.collection_DeleteDocument(colArgs);
   }
 
@@ -559,6 +888,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         args.directory
       ).then(
         (result: boolean) => resolve({ exists: result }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -607,6 +937,7 @@ export class CblReactNativeEngine implements ICoreEngine {
     return new Promise((resolve, reject) => {
       this.CblReactNative.database_GetPath(args.name).then(
         (result: string) => resolve({ path: result }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -614,15 +945,25 @@ export class CblReactNativeEngine implements ICoreEngine {
     });
   }
 
-  database_Open(args: DatabaseOpenArgs): Promise<void> {
+  database_Open(
+    args: DatabaseOpenArgs
+  ): Promise<{ databaseUniqueName: string }> {
+    this.debugLog(
+      `::DEBUG:: database_Open: ${args.name} ${args.config.directory} ${args.config.encryptionKey}`
+    );
     return new Promise((resolve, reject) => {
       this.CblReactNative.database_Open(
         args.name,
         args.config.directory,
         args.config.encryptionKey
       ).then(
-        () => resolve(),
+        (databaseUniqueName) => {
+          this.debugLog(`::DEBUG:: database_Open completed`);
+          resolve(databaseUniqueName);
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
+          this.debugLog(`::DEBUG:: database_Open Error: ${error}`);
           reject(error);
         }
       );
@@ -636,6 +977,7 @@ export class CblReactNativeEngine implements ICoreEngine {
     return new Promise((resolve, reject) => {
       this.CblReactNative.database_PerformMaintenance(numValue, args.name).then(
         () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -660,12 +1002,13 @@ export class CblReactNativeEngine implements ICoreEngine {
    * @deprecated This function will be removed in future versions. Use collection_Save instead.
    */
   database_Save(args: DatabaseSaveArgs): Promise<{ _id: string }> {
-    const colArgs: CollectionSaveArgs = {
+    const colArgs: CollectionSaveStringArgs = {
       name: args.name,
       collectionName: this._defaultCollectionName,
       scopeName: this._defaultScopeName,
       id: args.id,
-      document: args.document,
+      document: JSON.stringify(args.document),
+      blobs: JSON.stringify(args.blobs),
       concurrencyControl: args.concurrencyControl,
     };
     return this.collection_Save(colArgs);
@@ -684,6 +1027,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         args.config.usePlaintext
       ).then(
         () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -695,6 +1039,7 @@ export class CblReactNativeEngine implements ICoreEngine {
     return new Promise((resolve, reject) => {
       this.CblReactNative.database_SetLogLevel(args.domain, args.logLevel).then(
         () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -724,6 +1069,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: string) => {
           resolve({ path: result });
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -731,6 +1077,7 @@ export class CblReactNativeEngine implements ICoreEngine {
     });
   }
 
+  // eslint-disable-next-line
   file_GetFileNamesInDirectory(args: {
     path: string;
   }): Promise<{ files: string[] }> {
@@ -741,7 +1088,46 @@ export class CblReactNativeEngine implements ICoreEngine {
     args: QueryChangeListenerArgs,
     lcb: ListenerCallback
   ): Promise<void> {
-    return Promise.resolve(undefined);
+    return new Promise((resolve, reject) => {
+      const token = args.changeListenerToken;
+
+      if (this._queryChangeListeners.has(token)) {
+        reject(new Error('Query change listener token already exists'));
+        return;
+      }
+
+      const subscription = this.startListeningEvents(
+        this._eventQueryChange,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (results: any) => {
+          if (results.token === token) {
+            this.debugLog(
+              `::DEBUG:: Received query change event for token: ${token}`
+            );
+            lcb(results);
+          }
+        }
+      );
+
+      this._emitterSubscriptions.set(token, subscription);
+      this._queryChangeListeners.set(token, lcb);
+
+      this.CblReactNative.query_AddChangeListener(
+        token,
+        args.query,
+        args.parameters,
+        args.name
+      ).then(
+        () => resolve(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error: any) => {
+          this._emitterSubscriptions.delete(token);
+          this._queryChangeListeners.delete(token);
+          subscription.remove();
+          reject(error);
+        }
+      );
+    });
   }
 
   query_Execute(args: QueryExecuteArgs): Promise<Result> {
@@ -754,6 +1140,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: Result) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -771,6 +1158,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: { data: string }) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -781,7 +1169,35 @@ export class CblReactNativeEngine implements ICoreEngine {
   query_RemoveChangeListener(
     args: QueryRemoveChangeListenerArgs
   ): Promise<void> {
-    return Promise.resolve(undefined);
+    return new Promise((resolve, reject) => {
+      const token = args.changeListenerToken;
+
+      if (this._emitterSubscriptions.has(token)) {
+        this._emitterSubscriptions.get(token)?.remove();
+        this._emitterSubscriptions.delete(token);
+      }
+
+      if (this._queryChangeListeners.has(token)) {
+        this._queryChangeListeners.delete(token);
+      } else {
+        reject(new Error(`No query listener found with token: ${token}`));
+        return;
+      }
+
+      this.CblReactNative.query_RemoveChangeListener(token).then(
+        () => {
+          this.debugLog(
+            `::DEBUG:: query_RemoveChangeListener completed for token: ${token}`
+          );
+          resolve();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error: any) => {
+          this.debugLog(`::DEBUG:: query_RemoveChangeListener Error: ${error}`);
+          reject(error);
+        }
+      );
+    });
   }
 
   replicator_AddChangeListener(
@@ -790,62 +1206,68 @@ export class CblReactNativeEngine implements ICoreEngine {
   ): Promise<void> {
     //need to track the listener callback for later use due to how React Native events work.  Events are global so we need to first find which callback to call, we could have multiple replicators registered
     //https://reactnative.dev/docs/native-modules-ios#sending-events-to-javascript
-    if (this._replicatorChangeListeners.has(args.changeListenerToken)) {
+    if (
+      this._replicatorChangeListeners.has(args.changeListenerToken) ||
+      this._emitterSubscriptions.has(args.changeListenerToken)
+    ) {
       throw new Error(
         'ERROR:  changeListenerToken already exists and is registered to listen to callbacks, cannot add a new one'
       );
     }
     //if the event listener is not setup, then set up the listener.
     //Event listener only needs to be setup once for any replicators in memory
-    if (!this._isReplicatorStatusChangeEventSetup) {
-      this._replicatorStatusChangeSubscription = this.startListeningEvents(
-        this._eventReplicatorStatusChange,
-        (results: any) => {
-          const token = results.token as string;
-          const data = results.status;
-          const error = results.error;
-          if (token === undefined || token === null || token.length === 0) {
-            console.log(
-              '::ERROR:: No token to resolve back to proper callback for Replicator Status Change'
-            );
-            throw new Error(
-              'ERROR:  No token to resolve back to proper callback'
-            );
-          }
-          const callback = this._replicatorChangeListeners.get(token);
-          if (callback !== undefined) {
-            callback(data, error);
-          } else {
-            console.log(
-              `Error: Could not found callback method for token: ${token}.`
-            );
-            throw new Error(
-              `Error: Could not found callback method for token: ${token}.`
-            );
-          }
+    const subscription = this._eventEmitter.addListener(
+      this._eventReplicatorStatusChange,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (results: any) => {
+        this.debugLog(
+          `::DEBUG:: Received event ${this._eventReplicatorStatusChange}`
+        );
+        const token = results.token as string;
+        const data = results?.status;
+        const error = results?.error;
+        if (token === undefined || token === null || token.length === 0) {
+          this.debugLog(
+            '::ERROR:: No token to resolve back to proper callback for Replicator Status Change'
+          );
+          throw new Error(
+            'ERROR:  No token to resolve back to proper callback'
+          );
         }
-      );
-      const count = this._eventEmitter.listenerCount('replicatorStatusChange');
-      console.log(`::DEBUG::Replicator Status Change Listener count: ${count}`);
-      this._isReplicatorStatusChangeEventSetup = true;
-    }
-    //add token to change listener map
-    this._replicatorChangeListeners.set(args.changeListenerToken, lcb);
+        const callback = this._replicatorChangeListeners.get(token);
+        if (callback !== undefined) {
+          callback(data, error);
+        } else {
+          this.debugLog(
+            `Error: Could not found callback method for token: ${token}.`
+          );
+          throw new Error(
+            `Error: Could not found callback method for token: ${token}.`
+          );
+        }
+      }
+    );
     return new Promise((resolve, reject) => {
       this.CblReactNative.replicator_AddChangeListener(
         args.changeListenerToken,
         args.replicatorId
       ).then(
         () => {
+          //add token to change listener map
+          this._emitterSubscriptions.set(
+            args.changeListenerToken,
+            subscription
+          );
+          this._replicatorChangeListeners.set(args.changeListenerToken, lcb);
+          this.debugLog(
+            `::DEBUG:: replicator_AddChangeListener listener count: ${this._eventEmitter.listenerCount(this._eventReplicatorStatusChange)}`
+          );
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           this._replicatorChangeListeners.delete(args.changeListenerToken);
-          //stop the event listening if there is an error and no other tokens are present, thus no need to listen to events
-          if (this._replicatorChangeListeners.size === 0) {
-            this._replicatorStatusChangeSubscription.remove();
-            this._isReplicatorStatusChangeEventSetup = false;
-          }
+          subscription.remove();
           reject(error);
         }
       );
@@ -856,7 +1278,83 @@ export class CblReactNativeEngine implements ICoreEngine {
     args: ReplicationChangeListenerArgs,
     lcb: ListenerCallback
   ): Promise<void> {
-    return Promise.resolve(undefined);
+    //need to track the listener callback for later use due to how React Native events work
+    if (
+      this._replicatorDocumentChangeListeners.has(args.changeListenerToken) ||
+      this._emitterSubscriptions.has(args.changeListenerToken + '_doc')
+    ) {
+      throw new Error(
+        'ERROR: changeListenerToken already exists and is registered to listen to document callbacks, cannot add a new one'
+      );
+    }
+
+    // Set up document change listener if not already done
+    if (!this._isReplicatorDocumentChangeEventSetup) {
+      const docSubscription = this._eventEmitter.addListener(
+        this._eventReplicatorDocumentChange,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (results: any) => {
+          this.debugLog(
+            `::DEBUG:: Received event ${this._eventReplicatorDocumentChange}`
+          );
+          const token = results.token as string;
+          const data = results?.documents;
+          const error = results?.error;
+
+          if (token === undefined || token === null || token.length === 0) {
+            this.debugLog(
+              '::ERROR:: No token to resolve back to proper callback for Replicator Document Change'
+            );
+            throw new Error(
+              'ERROR: No token to resolve back to proper callback'
+            );
+          }
+
+          const callback = this._replicatorDocumentChangeListeners.get(token);
+          if (callback !== undefined) {
+            callback(data, error);
+          } else {
+            this.debugLog(
+              `Error: Could not find callback method for document change token: ${token}.`
+            );
+            throw new Error(
+              `Error: Could not find callback method for document change token: ${token}.`
+            );
+          }
+        }
+      );
+
+      this._emitterSubscriptions.set(
+        this._eventReplicatorDocumentChange,
+        docSubscription
+      );
+      this._isReplicatorDocumentChangeEventSetup = true;
+    }
+
+    return new Promise((resolve, reject) => {
+      this.CblReactNative.replicator_AddDocumentChangeListener(
+        args.changeListenerToken,
+        args.replicatorId
+      ).then(
+        () => {
+          this._replicatorDocumentChangeListeners.set(
+            args.changeListenerToken,
+            lcb
+          );
+          this.debugLog(
+            `::DEBUG:: replicator_AddDocumentChangeListener added successfully with token: ${args.changeListenerToken}`
+          );
+          resolve();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (error: any) => {
+          this._replicatorDocumentChangeListeners.delete(
+            args.changeListenerToken
+          );
+          reject(error);
+        }
+      );
+    });
   }
 
   replicator_Cleanup(args: ReplicatorArgs): Promise<void> {
@@ -865,6 +1363,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -878,6 +1377,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (results: ReplicatorArgs) => {
           resolve(results);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -898,6 +1398,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (results: { pendingDocumentIds: string[] }) => {
           resolve(results);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -911,6 +1412,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (results: ReplicatorStatus) => {
           resolve(results);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -932,6 +1434,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (results: { isPending: boolean }) => {
           resolve(results);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -942,6 +1445,22 @@ export class CblReactNativeEngine implements ICoreEngine {
   replicator_RemoveChangeListener(
     args: ReplicationChangeListenerArgs
   ): Promise<void> {
+    if (this._replicatorDocumentChangeListeners.has(args.changeListenerToken)) {
+      this._replicatorDocumentChangeListeners.delete(args.changeListenerToken);
+      // Remove any subscription with the doc suffix
+      if (this._emitterSubscriptions.has(args.changeListenerToken + '_doc')) {
+        this._emitterSubscriptions
+          .get(args.changeListenerToken + '_doc')
+          ?.remove();
+        this._emitterSubscriptions.delete(args.changeListenerToken + '_doc');
+      }
+    }
+
+    //remove the event subscription or you will have a leak
+    if (this._emitterSubscriptions.has(args.changeListenerToken)) {
+      this._emitterSubscriptions.get(args.changeListenerToken)?.remove();
+      this._emitterSubscriptions.delete(args.changeListenerToken);
+    }
     return new Promise((resolve, reject) => {
       this.CblReactNative.replicator_RemoveChangeListener(
         args.changeListenerToken,
@@ -952,13 +1471,9 @@ export class CblReactNativeEngine implements ICoreEngine {
           if (this._replicatorChangeListeners.has(args.changeListenerToken)) {
             this._replicatorChangeListeners.delete(args.changeListenerToken);
           }
-          //remove listening to events if there are no more listeners registered
-          if (this._replicatorChangeListeners.size === 0) {
-            this._replicatorStatusChangeSubscription.remove();
-            this._isReplicatorStatusChangeEventSetup = false;
-          }
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -972,6 +1487,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -985,6 +1501,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -998,6 +1515,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         () => {
           resolve();
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -1011,6 +1529,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: Scope) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -1024,6 +1543,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: Scope) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -1037,6 +1557,7 @@ export class CblReactNativeEngine implements ICoreEngine {
         (result: ScopesResult) => {
           resolve(result);
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any) => {
           reject(error);
         }
@@ -1044,7 +1565,74 @@ export class CblReactNativeEngine implements ICoreEngine {
     });
   }
 
+  URLEndpointListener_createListener(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    args: URLEndpointListenerCreateArgs
+  ): Promise<{ listenerId: string }> {
+    return Promise.reject(new Error('URLEndpointListener not implemented yet'));
+  }
+
+  URLEndpointListener_startListener(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    args: URLEndpointListenerArgs
+  ): Promise<void> {
+    return Promise.reject(new Error('URLEndpointListener not implemented yet'));
+  }
+
+  URLEndpointListener_stopListener(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    args: URLEndpointListenerArgs
+  ): Promise<void> {
+    return Promise.reject(new Error('URLEndpointListener not implemented yet'));
+  }
+
+  URLEndpointListener_getStatus(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    args: URLEndpointListenerArgs
+  ): Promise<URLEndpointListenerStatus> {
+    return Promise.reject(new Error('URLEndpointListener not implemented yet'));
+  }
+
+  URLEndpointListener_deleteIdentity(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    args: URLEndpointListenerTLSIdentityArgs
+  ): Promise<void> {
+    return Promise.reject(new Error('URLEndpointListener not implemented yet'));
+  }
+
   getUUID(): string {
     return uuid.v4().toString();
+  }
+
+  // =============================================================================
+  // LOG SINKS API
+  // =============================================================================
+
+  /**
+   * Sets or disables the console log sink
+   * @param args Arguments containing level and domains, or null to disable
+   */
+  async logsinks_SetConsole(args: LogSinksSetConsoleArgs): Promise<void> {
+    return this.CblReactNative.logsinks_SetConsole(args.level, args.domains);
+  }
+
+  /**
+   * Sets or disables the file log sink
+   * @param args Arguments containing level and config, or null to disable
+   */
+  async logsinks_SetFile(args: LogSinksSetFileArgs): Promise<void> {
+    return this.CblReactNative.logsinks_SetFile(args.level, args.config);
+  }
+
+  /**
+   * Sets or disables the custom log sink
+   * @param args Arguments containing level, domains, and token, or null to disable
+   */
+  async logsinks_SetCustom(args: LogSinksSetCustomArgs): Promise<void> {
+    return this.CblReactNative.logsinks_SetCustom(
+      args.level,
+      args.domains,
+      args.token
+    );
   }
 }

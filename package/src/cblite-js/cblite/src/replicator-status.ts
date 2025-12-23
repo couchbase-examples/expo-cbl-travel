@@ -2,11 +2,8 @@ import { ReplicatorActivityLevel } from './replicator-activity-level';
 import { ReplicatorProgress } from './replicator-progress';
 
 export class ReplicatorStatus {
-  constructor(
-    private activityLevel: ReplicatorActivityLevel,
-    private progress: ReplicatorProgress,
-    private error: String | undefined
-  ) {}
+    // eslint-disable-next-line
+  constructor(private activityLevel: ReplicatorActivityLevel, private progress: ReplicatorProgress, private error: string | undefined) {}
 
   getActivityLevel() {
     return this.activityLevel;
@@ -16,7 +13,7 @@ export class ReplicatorStatus {
     return this.progress;
   }
 
-  getError(): String | undefined {
+  getError(): string | undefined {
     return this.error;
   }
 

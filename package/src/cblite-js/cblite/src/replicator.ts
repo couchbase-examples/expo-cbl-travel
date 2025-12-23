@@ -13,6 +13,7 @@ import {
   isDocumentReplicationRepresentation,
 } from './document-replication';
 import { Collection } from './collection';
+import { ListenerToken } from './listener-token';
 
 export class Replicator {
   private _replicatorId: string = undefined;
@@ -29,6 +30,9 @@ export class Replicator {
     ReplicatorDocumentChangeListener
   >;
 
+  private _replicatorListenerTokensByUuid: Map<string, ListenerToken> = new Map();
+  private _replicatorDocListenerTokensByUuid: Map<string, ListenerToken> = new Map();
+
   /**
    * Initializes a replicator with the given configuration
    *
@@ -36,7 +40,7 @@ export class Replicator {
    */
   private constructor(replicatorId: string, config: ReplicatorConfiguration) {
     this._replicatorId = replicatorId;
-    this._config = config;
+    this._config = config.clone();
     this._documentChangeListener = new Map<
       string,
       ReplicatorDocumentChangeListener
@@ -49,7 +53,7 @@ export class Replicator {
    * @function
    *
    */
-  async addChangeListener(listener: ReplicatorChangeListener): Promise<string> {
+  async addChangeListener(listener: ReplicatorChangeListener): Promise<ListenerToken> {
     this._statusChangeListener = listener;
     const token = this._engine.getUUID();
     if (!this._didStartStatusChangeListener) {
@@ -66,7 +70,21 @@ export class Replicator {
         }
       );
       this._didStartStatusChangeListener = true;
-      return token;
+
+      // Create ListenerToken wrapper
+      const cblListenerToken = new ListenerToken(token, async () => {
+        // calling the remove listener native method
+        await this._engine.listenerToken_Remove({
+          changeListenerToken: token
+        });
+        
+        this._replicatorListenerTokensByUuid.delete(token);
+        this._didStartStatusChangeListener = false;
+      });
+
+      this._replicatorListenerTokensByUuid.set(token, cblListenerToken);
+
+      return cblListenerToken;
     } else {
       throw new Error('Listener already started');
     }
@@ -74,8 +92,8 @@ export class Replicator {
 
   async addDocumentChangeListener(
     listener: ReplicatorDocumentChangeListener
-  ): Promise<string> {
-    const token = this._engine.getUUID();
+  ): Promise<ListenerToken> {
+    const token = this._engine.getUUID() + "_doc";
     this._documentChangeListener.set(token, listener);
     await this._engine.replicator_AddDocumentChangeListener(
       {
@@ -93,18 +111,47 @@ export class Replicator {
         }
       }
     );
-    return token;
+
+    // Create ListenerToken wrapper
+    const cblListenerToken = new ListenerToken(token, async () => {
+      // calling the remove listener native method
+      await this._engine.listenerToken_Remove({
+        changeListenerToken: token
+      });
+      
+      this._replicatorDocListenerTokensByUuid.delete(token);
+      this._documentChangeListener.delete(token);
+    });
+
+    this._replicatorDocListenerTokensByUuid.set(token, cblListenerToken);
+
+    return cblListenerToken;
   }
 
+  /**
+ * Creates a new Replicator instance for database synchronization
+ * @param {ReplicatorConfiguration} config - The configuration for the replicator
+ * @returns {Promise<Replicator>} A Promise that resolves to a new Replicator instance
+ * @throws {Error} If the configuration is invalid or required parameters are missing
+ */
   static async create(config: ReplicatorConfiguration): Promise<Replicator> {
     if (config.getCollections().length === 0) {
       throw new Error('No collections specified in the configuration');
     }
+    
     const engine = EngineLocator.getEngine(EngineLocator.key);
+    
     const configJson = config.toJson();
-    const ret = await engine.replicator_Create({ config: configJson });
-    const replicator = new Replicator(ret.replicatorId, config);
-    return replicator;
+    
+    try {
+      const ret = await engine.replicator_Create({ config: configJson });
+      
+      const replicator = new Replicator(ret.replicatorId, config.clone());
+      
+      return replicator;
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
@@ -166,7 +213,7 @@ export class Replicator {
       replicatorId: this._replicatorId,
       collectionName: collection.name,
       scopeName: collection.scope.name,
-      name: collection.database.getName(),
+      name: collection.database.getUniqueName(),
     });
   }
 
@@ -188,7 +235,7 @@ export class Replicator {
       documentId: documentId,
       collectionName: collection.name,
       scopeName: collection.scope.name,
-      name: collection.database.getName(),
+      name: collection.database.getUniqueName(),
     });
   }
 
@@ -238,11 +285,38 @@ export class Replicator {
    *
    * @function
    */
-  async removeChangeListener(token: string): Promise<void> {
-    await this._engine.replicator_RemoveChangeListener({
-      replicatorId: this._replicatorId,
-      changeListenerToken: token,
+  async removeChangeListener(token: string | ListenerToken): Promise<void> {
+    const uuidToken: string = typeof token === 'string' 
+      ? token 
+      : token.getUuidToken();
+
+    // Check if it's a status change listener
+    const statusListenerToken = this._replicatorListenerTokensByUuid.get(uuidToken);
+    if (statusListenerToken) {
+      await statusListenerToken.remove();
+      return;
+    }
+
+    // Check if it's a document change listener
+    const docListenerToken = this._replicatorDocListenerTokensByUuid.get(uuidToken);
+    if (docListenerToken) {
+      await docListenerToken.remove();
+      return;
+    }
+
+    // Fallback: call generic bridge method directly
+    await this._engine.listenerToken_Remove({
+      changeListenerToken: uuidToken
     });
+    
+    // Cleanup - because we are using a unified map, we need to check if it's a document listener or a status listener
+    if (this._documentChangeListener.has(uuidToken)) {
+      // It's a document listener, so delete it from the map
+      this._documentChangeListener.delete(uuidToken);
+    } else {
+      // It's a status listener so we need to reset the flag
+      this._didStartStatusChangeListener = false;
+    }
   }
 
   /**

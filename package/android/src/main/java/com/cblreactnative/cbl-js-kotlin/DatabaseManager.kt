@@ -1,7 +1,8 @@
-package cbl.js.kotiln
+package cbl.js.kotlin
 import android.content.Context
 import com.couchbase.lite.*
 import com.couchbase.lite.Collection
+import kotlin.random.Random
 
 import org.json.JSONObject
 import java.io.File
@@ -165,15 +166,17 @@ object DatabaseManager {
         return db?.getScope(scopeName)
     }
 
-    fun openDatabase(databaseName: String, config: JSONObject?, context: Context): Database {
+    fun openDatabase(databaseName: String, config: JSONObject?, context: Context): String {
         synchronized(openDatabases) {
+            val nanoId = generateNanoId()
+            val databaseUniqueName = "${databaseName}_${nanoId}"
+
             val databaseConfig = buildDatabaseConfiguration(config, context)
             val newDatabase = Database(databaseName, databaseConfig)
-            if (openDatabases.containsKey(databaseName)) {
-                openDatabases.remove(databaseName)
-            }
-            openDatabases[databaseName] = newDatabase
-            return newDatabase
+
+            openDatabases[databaseUniqueName] = newDatabase
+
+            return databaseUniqueName
         }
     }
 
@@ -186,4 +189,14 @@ object DatabaseManager {
         val db = getDatabase(databaseName)
         return db?.scopes ?: setOf()
     }
+}
+
+fun generateNanoId(size: Int = 21): String {
+    val alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    val nanoId = StringBuilder(size)
+    repeat(size) {
+        val randomIndex = Random.nextInt(alphabet.length)
+        nanoId.append(alphabet[randomIndex])
+    }
+    return nanoId.toString()
 }
