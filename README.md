@@ -106,32 +106,13 @@ npm install
 
 ### Update the Configuration
 
-**IMPORTANT: Security Best Practices**
-
-⚠️ **Never commit sensitive credentials to version control!**
-
-The `app.json` file in this repository contains placeholder values. You have two options to configure your credentials:
-
-#### Option 1: Local Configuration (Recommended)
-1. Copy `app.config.example.json` to create your local configuration
-2. Update the values in `app.json` with your actual credentials
-3. Make sure `app.json` is never committed with real credentials
-
-#### Option 2: Environment Variables
-Create a `.env.local` file with your credentials (this file is ignored by git):
-```bash
-CAPELLA_ENDPOINT_URL=wss://your-endpoint.apps.cloud.couchbase.com:4984/your-database
-CAPELLA_USERNAME=your-username@example.com
-CAPELLA_PASSWORD=your-secure-password
-```
-
 Open the `app.json` file and locate the `extra` section at the bottom. You will need to update three configuration values:
 
 ```json
 "extra": {
-  "capellaEndpointUrl": "REPLACE_WITH_YOUR_CAPELLA_ENDPOINT",
-  "capellaUsername": "REPLACE_WITH_YOUR_USERNAME",
-  "capellaPassword": "REPLACE_WITH_YOUR_PASSWORD"
+  "capellaEndpointUrl": "wss://xxxxxx.apps.cloud.couchbase.com:4984/travel-location",
+  "capellaUsername": "demo@example.com",
+  "capellaPassword": "P@ssw0rd12"
 }
 ```
 
