@@ -32,9 +32,9 @@
       "typedRoutes": true
     },
     "extra": {
-      "capellaEndpointUrl": "wss://xxxxxx.apps.cloud.couchbase.com:4984/travel-location",
-      "capellaUsername": "demo@example.com",
-      "capellaPassword": "P@ssw0rd12"
+      "capellaEndpointUrl": "wss://nasm0fvdr-jnehnb.apps.cloud.couchbase.com:4984/amicablestevewhittaker",
+      "capellaUsername": "jayantdhingra",
+      "capellaPassword": "f9yu5QT4B5jpZep@"
     }
   }
 }
