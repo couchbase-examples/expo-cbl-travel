@@ -2,6 +2,7 @@ import {
     BasicAuthenticator,
     CblReactNativeEngine,
     Collection,
+    CollectionConfiguration,
     Database,
     DatabaseConfiguration,
     FileSystem,
@@ -9,11 +10,13 @@ import {
     IndexBuilder,
     LogDomain,
     LogLevel,
+    LogSinks,
     Replicator,
     ReplicatorConfiguration,
     URLEndpoint,
     ValueIndexItem,
 } from 'cbl-reactnative';
+import Constants from 'expo-constants';
 
 /**
  * Service class for managing the database and its replication.
@@ -128,8 +131,11 @@ export class DatabaseService {
      */
     public async initializeDatabase() {
         try {
-            //turned on database logging too verbose to see information in IDE
-            await Database.setLogLevel(LogDomain.ALL, LogLevel.DEBUG);
+            //turned on database logging with LogSinks API for console output
+            await LogSinks.setConsole({
+                level: LogLevel.DEBUG,
+                domains: [LogDomain.ALL]
+            });
             await this.setupDatabase();
             const path = await this.database?.getPath()
             console.debug(`Database Setup with path: ${path}`);
@@ -277,21 +283,27 @@ export class DatabaseService {
         const collections = await this.getCollections();
         if (collections.length > 0) {
 
-            //****************************************************************
-            //YOU MUST CHANGE THIS TO YOUR LOCAL IP ADDRESS OR TO YOUR CAPELLA CONNECTION STRING
-            //****************************************************************
-            const targetUrl = new URLEndpoint('wss://xxxxxx.apps.cloud.couchbase.com:4984/travel-location');
+            // Get configuration from app.json extra field
+            const endpointUrl = Constants.expoConfig?.extra?.capellaEndpointUrl;
+            const username = Constants.expoConfig?.extra?.capellaUsername;
+            const password = Constants.expoConfig?.extra?.capellaPassword;
 
-            //****************************************************************
-            //YOU MUST CREATE THIS USER IN YOUR SYNC GATEWAY CONFIGURATION OR CAPPELLA APP SERVICE ENDPOINT
-            //****************************************************************
-            const auth = new BasicAuthenticator('demo@example.com', 'P@ssw0rd12');
+            if (!endpointUrl || !username || !password) {
+                throw new Error('Capella configuration missing. Please update app.json with your Capella credentials.');
+            }
 
-            const config = new ReplicatorConfiguration(targetUrl);
-            config.addCollections(collections);
+            const targetUrl = new URLEndpoint(endpointUrl);
+            const auth = new BasicAuthenticator(username, password);
+
+            // Create CollectionConfiguration for each collection
+            const collectionConfigs = collections.map(col => new CollectionConfiguration(col));
+            
+            // Pass configurations and endpoint to constructor
+            const config = new ReplicatorConfiguration(collectionConfigs, targetUrl);
             config.setAuthenticator(auth);
             config.setContinuous(true);
             config.setAcceptOnlySelfSignedCerts(false);
+            
             this.replicator = await Replicator.create(config);
         } else {
             throw new Error('No collections found to set replicator to');
