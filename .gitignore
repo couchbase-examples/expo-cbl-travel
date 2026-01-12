@@ -97,9 +97,5 @@ tmp/
 temp/
 .tmp/
 
-# Package folder build artifacts
-package/node_modules/
-package/android/.gradle/
-package/android/build/
-package/ios/build/
-package/lib/commonjs/cblite-js/cblite-tests/
+# Package folder (not needed - all dependencies managed in root)
+package/

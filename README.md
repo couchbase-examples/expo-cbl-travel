@@ -176,6 +176,13 @@ npm run start
 # Then press 'a' to open Android emulator
 ```
 
+**Note for Production Builds:**
+This example app uses default Android signing for simplicity. For production or distribution, you must:
+1. Generate your own keystore: `keytool -genkey -v -keystore my-release-key.keystore -alias my-key-alias -keyalg RSA -keysize 2048 -validity 10000`
+2. Configure signing in `android/app/build.gradle`
+3. Never commit your keystore to version control
+4. See [React Native Signed APK Guide](https://reactnative.dev/docs/signed-apk-android) for details
+
 #### Development Server
 
 To run an expo development server with more options:
