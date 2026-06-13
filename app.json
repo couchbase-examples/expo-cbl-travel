@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.couchbase.expo.ts",
-      "deploymentTarget": "15.0"
+      "deploymentTarget": "16.4"
     },
     "android": {
       "adaptiveIcon": {
@@ -31,8 +31,9 @@
     "experiments": {
       "typedRoutes": true
     },
+    "newArchEnabled": true,
     "extra": {
-      "capellaEndpointUrl": "wss://xxxxxx.apps.cloud.couchbase.com:4984/travel-location",
+      "capellaEndpointUrl": "wss://oz6jzgfhhf0w0bqk.apps.cloud.couchbase.com:4984/locations",
       "capellaUsername": "demo@example.com",
       "capellaPassword": "P@ssw0rd12"
     }

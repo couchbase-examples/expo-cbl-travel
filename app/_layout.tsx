@@ -1,4 +1,5 @@
 import {DarkTheme, DefaultTheme, ThemeProvider} from '@react-navigation/native';
+import {ThemeProvider as RNEUIThemeProvider} from '@rneui/themed';
 import {useFonts} from 'expo-font';
 import {Stack} from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -7,7 +8,6 @@ import 'react-native-reanimated';
 import DatabaseProvider from '@/providers/DatabaseProvider';
 import {useColorScheme} from '@/hooks/useColorScheme';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().then();
 
 export default function RootLayout() {
@@ -28,11 +28,13 @@ export default function RootLayout() {
 
     return (
         <DatabaseProvider>
-            <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-                <Stack>
-                    <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
-                </Stack>
-            </ThemeProvider>
+            <RNEUIThemeProvider>
+                <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+                    <Stack>
+                        <Stack.Screen name="(tabs)" options={{headerShown: false}}/>
+                    </Stack>
+                </ThemeProvider>
+            </RNEUIThemeProvider>
         </DatabaseProvider>
     );
 }
