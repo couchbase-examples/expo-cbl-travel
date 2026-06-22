@@ -129,7 +129,7 @@ export default function LandmarkScreen() {
                         <FlatList
                             data={filteredLandmarks}
                             renderItem={renderLandmarkCard}
-                            keyExtractor={(item) => item.landmark.id.toString()}
+                            keyExtractor={(item) => item.docId}
                         />
                     )
             )}

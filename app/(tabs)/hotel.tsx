@@ -113,7 +113,7 @@ export default function HotelScreen() {
                         <FlatList
                             data={filteredHotels}
                             renderItem={renderHotelCard}
-                            keyExtractor={(item) => item.hotel.id.toString()}
+                            keyExtractor={(item) => item.docId}
                         />
                     )}
                 </Animated.View>
