@@ -15,7 +15,7 @@ import {
     ReplicatorConfiguration,
     URLEndpoint,
     ValueIndexItem,
-} from 'cbl-reactnative';
+} from '@couchbase/couchbase-lite-react-native';
 import Constants from 'expo-constants';
 
 /**
