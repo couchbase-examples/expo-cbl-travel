@@ -15,7 +15,7 @@ import {
     ReplicatorConfiguration,
     URLEndpoint,
     ValueIndexItem,
-} from 'cbl-reactnative';
+} from '@couchbase/couchbase-lite-react-native';
 import Constants from 'expo-constants';
 
 /**
@@ -68,7 +68,7 @@ export class DatabaseService {
      * @param searchTerm
      */
     public async getHotelsBySearchTerm(searchTerm: string) {
-        const queryStr = `SELECT * FROM inventory.hotel as hotel WHERE MATCH(idxTextSearch, '${searchTerm}')`;
+        const queryStr = `SELECT META(hotel).id AS docId, * FROM inventory.hotel as hotel WHERE MATCH(idxTextSearch, '${searchTerm}')`;
         return this.database?.createQuery(queryStr).execute();
     }
 
@@ -77,7 +77,7 @@ export class DatabaseService {
      */
     public async getHotels() {
         try {
-            const queryStr = "SELECT * FROM inventory.hotel as hotel";
+            const queryStr = "SELECT META(hotel).id AS docId, * FROM inventory.hotel as hotel";
             return this.database?.createQuery(queryStr).execute();
         } catch (error) {
             console.debug(`Error: ${error}`);
@@ -100,7 +100,7 @@ export class DatabaseService {
         for the first set we will allow for a search on the name, title, and content fields with the value being upper case or lower case by converting the search term to lower case and then searching for it in the lower case version of the fields
          */
         const nameLower = searchName.toLowerCase();
-        let queryStr = `SELECT * FROM inventory.landmark as landmark WHERE `;
+        let queryStr = `SELECT META(landmark).id AS docId, * FROM inventory.landmark as landmark WHERE `;
         let conditions: string[] = [];
         if (nameLower !== '') {
             conditions.push(`(LOWER(landmark.name) LIKE '%${nameLower}%' OR LOWER(landmark.title) LIKE '%${nameLower}%' OR LOWER(landmark.content) LIKE '%${nameLower}%')`);
