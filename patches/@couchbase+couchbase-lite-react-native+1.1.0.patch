@@ -1,0 +1,74 @@
+diff --git a/node_modules/@couchbase/couchbase-lite-react-native/android/build.gradle b/node_modules/@couchbase/couchbase-lite-react-native/android/build.gradle
+index b499e75..a094765 100644
+--- a/node_modules/@couchbase/couchbase-lite-react-native/android/build.gradle
++++ b/node_modules/@couchbase/couchbase-lite-react-native/android/build.gradle
+@@ -1,6 +1,8 @@
+ buildscript {
+   // Buildscript is evaluated before everything else so we can't use getExtOrDefault
+   def kotlin_version = rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : project.properties["CblReactnative_kotlinVersion"]
++  // Gradle 9 rejects AGP 8.0.x. Prefer the app's AGP, fall back to a >= 8.9 default.
++  def agp_version = rootProject.ext.has("agpVersion") ? rootProject.ext.get("agpVersion") : project.properties["CblReactnative_agpVersion"]
+ 
+   repositories {
+     google()
+@@ -12,7 +14,8 @@ buildscript {
+   }
+ 
+   dependencies {
+-    classpath "com.android.tools.build:gradle:8.0.0"
++    // noinspection AndroidGradlePluginVersion
++    classpath "com.android.tools.build:gradle:$agp_version"
+     // noinspection DifferentKotlinGradleVersion
+     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+   }
+diff --git a/node_modules/@couchbase/couchbase-lite-react-native/android/gradle.properties b/node_modules/@couchbase/couchbase-lite-react-native/android/gradle.properties
+index b68472d..35e3f72 100644
+--- a/node_modules/@couchbase/couchbase-lite-react-native/android/gradle.properties
++++ b/node_modules/@couchbase/couchbase-lite-react-native/android/gradle.properties
+@@ -1,4 +1,6 @@
+ CblReactnative_kotlinVersion=1.9.25
++# Must stay >= 8.9 so the module builds under Gradle 9 (AGP 8.0.x is rejected).
++CblReactnative_agpVersion=8.12.0
+ CblReactnative_minSdkVersion=24
+ CblReactnative_targetSdkVersion=34
+ CblReactnative_compileSdkVersion=34
+diff --git a/node_modules/@couchbase/couchbase-lite-react-native/android/src/main/java/com/cblreactnative/CblLoggingModule.kt b/node_modules/@couchbase/couchbase-lite-react-native/android/src/main/java/com/cblreactnative/CblLoggingModule.kt
+index 8479dcd..7bcc799 100644
+--- a/node_modules/@couchbase/couchbase-lite-react-native/android/src/main/java/com/cblreactnative/CblLoggingModule.kt
++++ b/node_modules/@couchbase/couchbase-lite-react-native/android/src/main/java/com/cblreactnative/CblLoggingModule.kt
+@@ -185,7 +185,7 @@ class CblLoggingModule(reactContext: ReactApplicationContext) :
+     scope.launch {
+       try {
+         val intLevel: Int? = if (level.toInt() == -1) null else level.toInt()
+-        val configMap: Map<String, Any>? =
++        val configMap: Map<String, Any?>? =
+           if (intLevel == null) null
+           else config.toHashMap()
+         val logDirectory = configMap?.get("directory") as? String
+diff --git a/node_modules/@couchbase/couchbase-lite-react-native/cblite-js-common/cbl-js-kotlin/LogSinksManager.kt b/node_modules/@couchbase/couchbase-lite-react-native/cblite-js-common/cbl-js-kotlin/LogSinksManager.kt
+index 8a0b78b..b609e6e 100644
+--- a/node_modules/@couchbase/couchbase-lite-react-native/cblite-js-common/cbl-js-kotlin/LogSinksManager.kt
++++ b/node_modules/@couchbase/couchbase-lite-react-native/cblite-js-common/cbl-js-kotlin/LogSinksManager.kt
+@@ -59,7 +59,7 @@ object LogSinksManager {
+      *   - "maxKeptFiles" (Number, optional): Maximum number of rotated log files to keep
+      */
+     @Synchronized
+-    fun setFileSink(level: Int?, config: Map<String, Any>?) {
++    fun setFileSink(level: Int?, config: Map<String, Any?>?) {
+         if (level == null || config == null) {
+             // null means disable
+             LogSinks.get().file = null
+diff --git a/node_modules/@couchbase/couchbase-lite-react-native/ios/RCTCblModules.mm b/node_modules/@couchbase/couchbase-lite-react-native/ios/RCTCblModules.mm
+index 3483449..18de555 100644
+--- a/node_modules/@couchbase/couchbase-lite-react-native/ios/RCTCblModules.mm
++++ b/node_modules/@couchbase/couchbase-lite-react-native/ios/RCTCblModules.mm
+@@ -1,5 +1,9 @@
+ #import "RCTCblModules.h"
++#if __has_include(<cbl_reactnative/cbl_reactnative-Swift.h>)
++#import <cbl_reactnative/cbl_reactnative-Swift.h>
++#else
+ #import "cbl_reactnative-Swift.h"
++#endif
+ 
+ #import <React/RCTAssert.h>
+ #import <React/RCTConstants.h>
